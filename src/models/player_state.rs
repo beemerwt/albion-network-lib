@@ -57,52 +57,6 @@ impl PlayerState {
     }
 }
 
-fn calculate_median(ordered: &[i64]) -> f64 {
-    if ordered.is_empty() {
-        return 0.0;
-    }
-    let middle = ordered.len() / 2;
-    if ordered.len() % 2 == 0 {
-        (ordered[middle - 1] + ordered[middle]) as f64 / 2.0
-    } else {
-        ordered[middle] as f64
-    }
-}
-
-fn calculate_percentile(ordered: &[i64], percentile: f64) -> f64 {
-    if ordered.is_empty() {
-        return 0.0;
-    }
-    if ordered.len() == 1 {
-        return ordered[0] as f64;
-    }
-
-    let position = (ordered.len() - 1) as f64 * percentile;
-    let lower = position.floor() as usize;
-    let upper = position.ceil() as usize;
-    if lower == upper {
-        return ordered[lower] as f64;
-    }
-
-    let fraction = position - lower as f64;
-    ordered[lower] as f64 + (ordered[upper] - ordered[lower]) as f64 * fraction
-}
-
-fn calculate_standard_deviation(samples: &[i64], average: f64) -> f64 {
-    if samples.len() <= 1 {
-        return 0.0;
-    }
-
-    let variance_sum = samples
-        .iter()
-        .map(|sample| {
-            let diff = *sample as f64 - average;
-            diff * diff
-        })
-        .sum::<f64>();
-    (variance_sum / samples.len() as f64).sqrt()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,12 +9,14 @@ pub(crate) mod protocol18;
 pub(crate) mod util;
 
 pub mod error;
+pub mod extracted_packet;
 pub mod hosts;
 pub mod packet;
 pub mod pcap;
 pub mod photon;
 
 pub use error::{DecodeError, Result};
+pub use extracted_packet::{ExtractedPacket, MarketPlaceNotification};
 pub use hosts::HostFilter;
 pub use packet::DecodedPacket;
 pub use pcap::{Endpoint, UdpPacket, extract_udp_payload, iter_pcapng_packets};

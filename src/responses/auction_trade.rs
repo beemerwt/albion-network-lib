@@ -1,7 +1,7 @@
 use crate::models::CachedOrder;
 use serde::Serialize;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AuctionTrade {
     pub amount: Option<i64>,
     pub operation: &'static str,
@@ -9,7 +9,7 @@ pub struct AuctionTrade {
     pub order_id: Option<i64>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AuctionTradeResponse {
     pub confirmed_trade: Option<AuctionTrade>,
     pub success: bool,

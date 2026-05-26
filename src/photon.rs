@@ -1,6 +1,7 @@
 use crate::{
     error::Result,
     event_codes::EventCode,
+    extracted_packet::{ExtractedPacket, MarketPlaceNotification},
     models::{CachedOrder, PlayerState, WorldMap},
     names,
     operation_codes::OperationCode,
@@ -19,7 +20,6 @@ use crate::{
     },
     util::{params_to_json, read_i32_be, to_signed_short, value_i64},
 };
-use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -366,42 +366,48 @@ impl PhotonParser {
         operation_code: OperationCode,
         parameters: &BTreeMap<u8, Value>,
         return_code: Option<i16>,
-    ) -> Option<Value> {
+    ) -> Option<ExtractedPacket> {
         let fallback_location_id = self.player_state.location_id();
         match (operation_code, packet_kind) {
             (OperationCode::AuctionGetOffers, "request") => {
                 let orders = extract_market_orders(parameters, fallback_location_id);
-                return Some(to_json_value(AuctionGetOffers {
+                return Some(ExtractedPacket::AuctionGetOffersRequest(AuctionGetOffers {
                     market_order_count: orders.len(),
                     market_orders: orders,
                 }));
             }
             (OperationCode::AuctionGetRequests, "request") => {
                 let orders = extract_market_orders(parameters, fallback_location_id);
-                return Some(to_json_value(AuctionGetRequests {
-                    market_order_count: orders.len(),
-                    market_orders: orders,
-                }));
+                return Some(ExtractedPacket::AuctionGetRequestsRequest(
+                    AuctionGetRequests {
+                        market_order_count: orders.len(),
+                        market_orders: orders,
+                    },
+                ));
             }
             (OperationCode::AuctionGetOffers, "response") => {
                 let orders = extract_market_orders(parameters, fallback_location_id);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
-                return Some(to_json_value(AuctionGetOffersResult {
-                    market_order_count: orders.len(),
-                    market_orders: orders,
-                }));
+                return Some(ExtractedPacket::AuctionGetOffersResponse(
+                    AuctionGetOffersResult {
+                        market_order_count: orders.len(),
+                        market_orders: orders,
+                    },
+                ));
             }
             (OperationCode::AuctionGetRequests, "response") => {
                 let orders = extract_market_orders(parameters, fallback_location_id);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
-                return Some(to_json_value(AuctionGetRequestsResult {
-                    market_order_count: orders.len(),
-                    market_orders: orders,
-                }));
+                return Some(ExtractedPacket::AuctionGetRequestsResponse(
+                    AuctionGetRequestsResult {
+                        market_order_count: orders.len(),
+                        market_orders: orders,
+                    },
+                ));
             }
             (OperationCode::AuctionBuyOffer, "request") => {
                 let amount = parameters.get(&1).and_then(value_i64);
@@ -419,7 +425,7 @@ impl PhotonParser {
                     order: cached_order,
                     order_id,
                 });
-                return Some(to_json_value(request));
+                return Some(ExtractedPacket::AuctionBuyOfferRequest(request));
             }
             (OperationCode::AuctionSellSpecificItem, "request") => {
                 let amount = parameters.get(&4).and_then(value_i64);
@@ -437,7 +443,7 @@ impl PhotonParser {
                     order: cached_order,
                     order_id,
                 });
-                return Some(to_json_value(request));
+                return Some(ExtractedPacket::AuctionSellSpecificItemRequest(request));
             }
             (
                 OperationCode::AuctionBuyOffer | OperationCode::AuctionSellSpecificItem,
@@ -449,7 +455,7 @@ impl PhotonParser {
                     success,
                 };
                 self.unconfirmed_trade = None;
-                return Some(to_json_value(response));
+                return Some(ExtractedPacket::AuctionTradeResponse(response));
             }
             (OperationCode::Join, "response") => {
                 let response = JoinResponse::from_params(parameters);
@@ -460,7 +466,7 @@ impl PhotonParser {
                 }
                 self.player_state
                     .set_location_raw(&response.player_location);
-                return Some(to_json_value(response));
+                return Some(ExtractedPacket::JoinResponse(response));
             }
             _ => {}
         }
@@ -468,18 +474,20 @@ impl PhotonParser {
         None
     }
 
-    fn extract_event(&self, event_code: i32, parameters: &BTreeMap<u8, Value>) -> Option<Value> {
+    fn extract_event(
+        &self,
+        event_code: i32,
+        parameters: &BTreeMap<u8, Value>,
+    ) -> Option<ExtractedPacket> {
         if event_code == EventCode::MarketPlaceNotification as i32 {
-            return Some(
-                json!({"notification": parameters.get(&0).cloned().unwrap_or(Value::Null)}),
-            );
+            return Some(ExtractedPacket::MarketPlaceNotification(
+                MarketPlaceNotification {
+                    notification: parameters.get(&0).cloned().unwrap_or(Value::Null),
+                },
+            ));
         }
         None
     }
-}
-
-fn to_json_value(value: impl Serialize) -> Value {
-    serde_json::to_value(value).unwrap()
 }
 
 fn parse_operation_code(params: &BTreeMap<u8, Value>) -> Result<OperationCode> {
@@ -563,7 +571,11 @@ mod tests {
             .extract_operation("response", OperationCode::Join, &params, Some(0))
             .unwrap();
 
-        assert_eq!(extracted["player_name"], json!("PlayerOne"));
+        let ExtractedPacket::JoinResponse(response) = extracted else {
+            panic!("expected join response");
+        };
+
+        assert_eq!(response.player_name.as_deref(), Some("PlayerOne"));
         assert_eq!(parser.player_state().user_object_id(), Some(123));
         assert_eq!(parser.player_state().player_name, "PlayerOne");
         assert_eq!(
@@ -640,7 +652,212 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(extracted["market_orders"][0]["LocationId"], json!(2000));
-        assert_eq!(extracted["market_orders"][1]["LocationId"], json!(9999));
+        let ExtractedPacket::AuctionGetOffersResponse(response) = extracted else {
+            panic!("expected auction get offers response");
+        };
+
+        assert_eq!(response.market_orders[0].location_id, Some(2000));
+        assert_eq!(response.market_orders[1].location_id, Some(9999));
+    }
+
+    #[test]
+    fn auction_operations_return_typed_extracted_packets() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let params = BTreeMap::new();
+
+        let extracted = parser
+            .extract_operation("request", OperationCode::AuctionGetOffers, &params, None)
+            .unwrap();
+        assert!(matches!(
+            extracted,
+            ExtractedPacket::AuctionGetOffersRequest(_)
+        ));
+
+        let extracted = parser
+            .extract_operation("request", OperationCode::AuctionGetRequests, &params, None)
+            .unwrap();
+        assert!(matches!(
+            extracted,
+            ExtractedPacket::AuctionGetRequestsRequest(_)
+        ));
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetRequests,
+                &market_order_params(14978117778),
+                Some(0),
+            )
+            .unwrap();
+        assert!(matches!(
+            extracted,
+            ExtractedPacket::AuctionGetRequestsResponse(_)
+        ));
+    }
+
+    #[test]
+    fn buy_offer_request_exposes_cached_order_through_typed_default_flow() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetOffers,
+                &market_order_params(14978117778),
+                Some(0),
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(1, json!(1));
+        params.insert(2, json!(14978117778_i64));
+
+        let extracted = parser
+            .extract_operation("request", OperationCode::AuctionBuyOffer, &params, None)
+            .unwrap();
+
+        let ExtractedPacket::AuctionBuyOfferRequest(request) = extracted else {
+            panic!("expected auction buy offer request");
+        };
+
+        assert_eq!(request.amount, Some(1));
+        assert_eq!(request.order_id, Some(14978117778));
+        assert_eq!(
+            request.cached_order.as_ref().map(|order| order.id),
+            request.order_id
+        );
+    }
+
+    #[test]
+    fn sell_specific_item_and_trade_response_return_typed_packets() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetRequests,
+                &market_order_params(14977174637),
+                Some(0),
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(1, json!(14977174637_i64));
+        params.insert(4, json!(1));
+
+        let extracted = parser
+            .extract_operation(
+                "request",
+                OperationCode::AuctionSellSpecificItem,
+                &params,
+                None,
+            )
+            .unwrap();
+        assert!(matches!(
+            extracted,
+            ExtractedPacket::AuctionSellSpecificItemRequest(_)
+        ));
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionSellSpecificItem,
+                &BTreeMap::new(),
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AuctionTradeResponse(response) = extracted else {
+            panic!("expected auction trade response");
+        };
+
+        assert!(response.success);
+        assert_eq!(
+            response
+                .confirmed_trade
+                .as_ref()
+                .and_then(|trade| trade.order.as_ref())
+                .map(|order| order.id),
+            Some(14977174637)
+        );
+    }
+
+    #[test]
+    fn marketplace_notification_returns_typed_packet() {
+        let parser = PhotonParser::new("test".to_string(), false);
+        let mut params = BTreeMap::new();
+        params.insert(0, json!({"message": "sold"}));
+
+        let extracted = parser
+            .extract_event(EventCode::MarketPlaceNotification as i32, &params)
+            .unwrap();
+
+        let ExtractedPacket::MarketPlaceNotification(notification) = extracted else {
+            panic!("expected marketplace notification");
+        };
+
+        assert_eq!(notification.notification, json!({"message": "sold"}));
+    }
+
+    #[test]
+    fn extracted_json_is_explicit_escape_hatch() {
+        let packet = DecodedPacket {
+            file: "test".to_string(),
+            packet_number: 1,
+            direction: "client_to_server".to_string(),
+            source: "client:1".to_string(),
+            destination: "server:5056".to_string(),
+            message_type: "operation_request".to_string(),
+            code: OperationCode::AuctionBuyOffer as i32,
+            name: OperationCode::AuctionBuyOffer.name().to_string(),
+            return_code: None,
+            debug_message: String::new(),
+            parameters: BTreeMap::new(),
+            extracted: Some(ExtractedPacket::AuctionBuyOfferRequest(AuctionBuyOffer {
+                amount: Some(1),
+                cached_order: None,
+                order_id: Some(14978117778),
+            })),
+        };
+
+        assert_eq!(
+            packet.extracted_json(),
+            Some(json!({
+                "amount": 1,
+                "cached_order": null,
+                "order_id": 14978117778_i64
+            }))
+        );
+    }
+
+    fn market_order_params(order_id: i64) -> BTreeMap<u8, Value> {
+        let mut params = BTreeMap::new();
+        params.insert(
+            0,
+            json!([
+                {
+                    "Amount": 2,
+                    "AuctionType": "offer",
+                    "BuyerCharacterId": null,
+                    "BuyerName": null,
+                    "DistanceFee": 0,
+                    "EnchantmentLevel": 0,
+                    "Expires": "2026-06-22T03:34:16.096699",
+                    "HasBuyerFetched": false,
+                    "HasSellerFetched": false,
+                    "Id": order_id,
+                    "IsFinished": false,
+                    "ItemGroupTypeId": "T1_HIDE",
+                    "ItemTypeId": "T1_HIDE",
+                    "LocationId": null,
+                    "QualityLevel": 1,
+                    "ReferenceId": "7ae09894-4883-479b-932e-ff7914c82855",
+                    "SellerCharacterId": "07b8fbc0-c512-4054-bc53-12312af94df3",
+                    "SellerName": "CoelhoMalvado",
+                    "Tier": 1,
+                    "TotalPriceSilver": 100000,
+                    "UnitPriceSilver": 50000
+                }
+            ]),
+        );
+        params
     }
 }
