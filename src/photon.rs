@@ -1,7 +1,7 @@
 use crate::{
     error::Result,
     event_codes::EventCode,
-    models::CachedOrder,
+    models::{CachedOrder, PlayerState, WorldMap},
     names,
     operation_codes::OperationCode,
     packet::DecodedPacket,
@@ -15,12 +15,16 @@ use crate::{
         auction_get_offers::AuctionGetOffersResult,
         auction_get_requests::AuctionGetRequestsResult,
         auction_trade::{AuctionTrade, AuctionTradeResponse},
+        join_response::JoinResponse,
     },
     util::{params_to_json, read_i32_be, to_signed_short, value_i64},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 const COMMAND_DISCONNECT: u8 = 4;
 const COMMAND_SEND_RELIABLE: u8 = 6;
@@ -45,10 +49,16 @@ pub struct PhotonParser {
     decoded_packets: Vec<DecodedPacket>,
     market_orders_by_id: HashMap<i64, CachedOrder>,
     unconfirmed_trade: Option<AuctionTrade>,
+    player_state: PlayerState,
 }
 
 impl PhotonParser {
     pub fn new(file_name: String, debug: bool) -> Self {
+        let world_map = WorldMap::from_embedded().unwrap_or_else(|_| WorldMap::empty());
+        Self::with_world_map(file_name, debug, world_map)
+    }
+
+    pub fn with_world_map(file_name: String, debug: bool, world_map: WorldMap) -> Self {
         Self {
             file_name,
             debug,
@@ -57,6 +67,7 @@ impl PhotonParser {
             decoded_packets: Vec::new(),
             market_orders_by_id: HashMap::new(),
             unconfirmed_trade: None,
+            player_state: PlayerState::new(Arc::new(world_map)),
         }
     }
 
@@ -66,6 +77,14 @@ impl PhotonParser {
 
     pub fn market_order_count(&self) -> usize {
         self.market_orders_by_id.len()
+    }
+
+    pub fn player_state(&self) -> &PlayerState {
+        &self.player_state
+    }
+
+    pub fn player_state_mut(&mut self) -> &mut PlayerState {
+        &mut self.player_state
     }
 
     pub fn into_decoded_packets(self) -> Vec<DecodedPacket> {
@@ -85,6 +104,7 @@ impl PhotonParser {
         let flags = payload[2];
         let command_count = payload[3];
         if flags == 1 {
+            self.player_state.set_has_encrypted_data(true);
             return Ok("Encrypted");
         }
         let mut offset = 12;
@@ -182,6 +202,7 @@ impl PhotonParser {
         let message_type = data[offset + 1];
         let operation_payload = &data[offset + 2..offset + command_length];
         if message_type == 131 {
+            self.player_state.set_has_encrypted_data(true);
             return Ok(("Encrypted", offset + command_length));
         }
         match message_type {
@@ -346,23 +367,24 @@ impl PhotonParser {
         parameters: &BTreeMap<u8, Value>,
         return_code: Option<i16>,
     ) -> Option<Value> {
+        let fallback_location_id = self.player_state.location_id();
         match (operation_code, packet_kind) {
             (OperationCode::AuctionGetOffers, "request") => {
-                let orders = extract_market_orders(parameters);
+                let orders = extract_market_orders(parameters, fallback_location_id);
                 return Some(to_json_value(AuctionGetOffers {
                     market_order_count: orders.len(),
                     market_orders: orders,
                 }));
             }
             (OperationCode::AuctionGetRequests, "request") => {
-                let orders = extract_market_orders(parameters);
+                let orders = extract_market_orders(parameters, fallback_location_id);
                 return Some(to_json_value(AuctionGetRequests {
                     market_order_count: orders.len(),
                     market_orders: orders,
                 }));
             }
             (OperationCode::AuctionGetOffers, "response") => {
-                let orders = extract_market_orders(parameters);
+                let orders = extract_market_orders(parameters, fallback_location_id);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -372,7 +394,7 @@ impl PhotonParser {
                 }));
             }
             (OperationCode::AuctionGetRequests, "response") => {
-                let orders = extract_market_orders(parameters);
+                let orders = extract_market_orders(parameters, fallback_location_id);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -429,6 +451,17 @@ impl PhotonParser {
                 self.unconfirmed_trade = None;
                 return Some(to_json_value(response));
             }
+            (OperationCode::Join, "response") => {
+                let response = JoinResponse::from_params(parameters);
+                self.player_state
+                    .set_user_object_id(response.user_object_id);
+                if let Some(player_name) = response.player_name.as_deref() {
+                    self.player_state.set_player_name(player_name);
+                }
+                self.player_state
+                    .set_location_raw(&response.player_location);
+                return Some(to_json_value(response));
+            }
             _ => {}
         }
 
@@ -476,7 +509,10 @@ fn parse_event_code(params: &BTreeMap<u8, Value>) -> Result<i32> {
     Err(format!("Unknown event code in parameter 252: {code}").into())
 }
 
-fn extract_market_orders(params: &BTreeMap<u8, Value>) -> Vec<CachedOrder> {
+fn extract_market_orders(
+    params: &BTreeMap<u8, Value>,
+    fallback_location_id: Option<i64>,
+) -> Vec<CachedOrder> {
     let Some(raw_orders) = params.get(&0) else {
         return Vec::new();
     };
@@ -491,6 +527,12 @@ fn extract_market_orders(params: &BTreeMap<u8, Value>) -> Vec<CachedOrder> {
             Value::Object(_) => serde_json::from_value(value).ok(),
             _ => None,
         })
+        .map(|mut order: CachedOrder| {
+            if order.location_id.is_none() {
+                order.location_id = fallback_location_id;
+            }
+            order
+        })
         .collect()
 }
 
@@ -501,5 +543,104 @@ fn direction(source: &str, destination: &str) -> &'static str {
         "client_to_server"
     } else {
         "unknown"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn join_response_updates_player_state() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let mut params = BTreeMap::new();
+        params.insert(0, json!(123));
+        params.insert(2, json!("PlayerOne"));
+        params.insert(8, json!("Bridgewatch"));
+
+        let extracted = parser
+            .extract_operation("response", OperationCode::Join, &params, Some(0))
+            .unwrap();
+
+        assert_eq!(extracted["player_name"], json!("PlayerOne"));
+        assert_eq!(parser.player_state().user_object_id(), Some(123));
+        assert_eq!(parser.player_state().player_name, "PlayerOne");
+        assert_eq!(
+            parser.player_state().location.friendly_name(),
+            "Bridgewatch"
+        );
+        assert_eq!(parser.player_state().location.location_id(), Some(2000));
+    }
+
+    #[test]
+    fn market_orders_inherit_missing_location_id_from_player_state() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        parser.player_state_mut().set_location_raw("Bridgewatch");
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            0,
+            json!([
+                {
+                    "Amount": 1,
+                    "AuctionType": "offer",
+                    "BuyerCharacterId": null,
+                    "BuyerName": null,
+                    "DistanceFee": 0,
+                    "EnchantmentLevel": 0,
+                    "Expires": "2026-06-25T07:55:20.513833",
+                    "HasBuyerFetched": false,
+                    "HasSellerFetched": false,
+                    "Id": 14990497605_i64,
+                    "IsFinished": false,
+                    "ItemGroupTypeId": "T1_HIDE",
+                    "ItemTypeId": "T1_HIDE",
+                    "LocationId": null,
+                    "QualityLevel": 1,
+                    "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec287",
+                    "SellerCharacterId": null,
+                    "SellerName": null,
+                    "Tier": 1,
+                    "TotalPriceSilver": 500000,
+                    "UnitPriceSilver": 50000
+                },
+                {
+                    "Amount": 1,
+                    "AuctionType": "offer",
+                    "BuyerCharacterId": null,
+                    "BuyerName": null,
+                    "DistanceFee": 0,
+                    "EnchantmentLevel": 0,
+                    "Expires": "2026-06-25T07:55:20.513833",
+                    "HasBuyerFetched": false,
+                    "HasSellerFetched": false,
+                    "Id": 14990497606_i64,
+                    "IsFinished": false,
+                    "ItemGroupTypeId": "T1_HIDE",
+                    "ItemTypeId": "T1_HIDE",
+                    "LocationId": 9999,
+                    "QualityLevel": 1,
+                    "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec288",
+                    "SellerCharacterId": null,
+                    "SellerName": null,
+                    "Tier": 1,
+                    "TotalPriceSilver": 500000,
+                    "UnitPriceSilver": 50000
+                }
+            ]),
+        );
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetOffers,
+                &params,
+                Some(0),
+            )
+            .unwrap();
+
+        assert_eq!(extracted["market_orders"][0]["LocationId"], json!(2000));
+        assert_eq!(extracted["market_orders"][1]["LocationId"], json!(9999));
     }
 }
