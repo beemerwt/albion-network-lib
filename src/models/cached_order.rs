@@ -1,10 +1,11 @@
+use crate::models::AuctionType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct CachedOrder {
     pub amount: i64,
-    pub auction_type: String,
+    pub auction_type: AuctionType,
     pub buyer_character_id: Option<String>,
     pub buyer_name: Option<String>,
     pub distance_fee: i64,
@@ -17,6 +18,8 @@ pub struct CachedOrder {
     pub item_group_type_id: String,
     pub item_type_id: String,
     pub location_id: Option<i64>,
+    pub location_name: Option<String>,
+    pub friendly_location_name: Option<String>,
     pub quality_level: i64,
     pub reference_id: String,
     pub seller_character_id: Option<String>,
@@ -29,7 +32,9 @@ pub struct CachedOrder {
 #[cfg(test)]
 mod tests {
     use super::CachedOrder;
+    use crate::models::AuctionType;
     use serde::Deserialize;
+    use serde_json::json;
 
     #[derive(Deserialize)]
     struct CachedOrderFixture {
@@ -53,7 +58,12 @@ mod tests {
         .unwrap();
 
         assert_eq!(buy_offer.cached_order.id, 14978117778);
+        assert_eq!(buy_offer.cached_order.auction_type, AuctionType::Offer);
         assert_eq!(sell_specific_item.cached_order.id, 14977174637);
+        assert_eq!(
+            sell_specific_item.cached_order.auction_type,
+            AuctionType::Request
+        );
     }
 
     #[test]
@@ -65,5 +75,45 @@ mod tests {
 
         assert_eq!(get_requests.market_orders.len(), 1);
         assert_eq!(get_requests.market_orders[0].id, 14977174637);
+        assert_eq!(
+            get_requests.market_orders[0].auction_type,
+            AuctionType::Request
+        );
+    }
+
+    #[test]
+    fn preserves_unknown_auction_type() {
+        let mut value = json!({
+            "Amount": 1,
+            "AuctionType": "custom",
+            "BuyerCharacterId": null,
+            "BuyerName": null,
+            "DistanceFee": 0,
+            "EnchantmentLevel": 0,
+            "Expires": "2026-06-25T07:55:20.513833",
+            "HasBuyerFetched": false,
+            "HasSellerFetched": false,
+            "Id": 14990497605_i64,
+            "IsFinished": false,
+            "ItemGroupTypeId": "T1_HIDE",
+            "ItemTypeId": "T1_HIDE",
+            "LocationId": null,
+            "QualityLevel": 1,
+            "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec287",
+            "SellerCharacterId": null,
+            "SellerName": null,
+            "Tier": 1,
+            "TotalPriceSilver": 500000,
+            "UnitPriceSilver": 50000
+        });
+        value["LocationName"] = json!(null);
+        value["FriendlyLocationName"] = json!(null);
+
+        let order: CachedOrder = serde_json::from_value(value).unwrap();
+
+        assert_eq!(
+            order.auction_type,
+            AuctionType::Unknown("custom".to_string())
+        );
     }
 }

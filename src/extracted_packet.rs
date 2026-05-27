@@ -1,12 +1,7 @@
 use crate::{
-    requests::{
-        auction_buy_offer::AuctionBuyOffer, auction_get_offers::AuctionGetOffers,
-        auction_get_requests::AuctionGetRequests,
-        auction_sell_specific_item::AuctionSellSpecificItem,
-    },
+    requests::{AuctionBuyOffer, AuctionGetOffers, AuctionGetRequests, AuctionSellSpecificItem},
     responses::{
-        auction_get_offers::AuctionGetOffersResult, auction_get_requests::AuctionGetRequestsResult,
-        auction_trade::AuctionTradeResponse, join_response::JoinResponse,
+        AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTradeResponse, JoinResponse,
     },
 };
 use serde::Serialize;

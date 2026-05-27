@@ -2,7 +2,7 @@ use crate::{
     error::Result,
     event_codes::EventCode,
     extracted_packet::{ExtractedPacket, MarketPlaceNotification},
-    models::{CachedOrder, PlayerState, WorldMap},
+    models::{CachedOrder, OperationType, PlayerState, TradeType, WorldMap},
     names,
     operation_codes::OperationCode,
     packet::DecodedPacket,
@@ -44,6 +44,7 @@ struct PendingSegment {
 pub struct PhotonParser {
     file_name: String,
     debug: bool,
+    world_map: Arc<WorldMap>,
     deserializer: Protocol18Deserializer,
     pending_segments: HashMap<i32, PendingSegment>,
     decoded_packets: Vec<DecodedPacket>,
@@ -59,15 +60,17 @@ impl PhotonParser {
     }
 
     pub fn with_world_map(file_name: String, debug: bool, world_map: WorldMap) -> Self {
+        let world_map = Arc::new(world_map);
         Self {
             file_name,
             debug,
+            world_map: Arc::clone(&world_map),
             deserializer: Protocol18Deserializer,
             pending_segments: HashMap::new(),
             decoded_packets: Vec::new(),
             market_orders_by_id: HashMap::new(),
             unconfirmed_trade: None,
-            player_state: PlayerState::new(Arc::new(world_map)),
+            player_state: PlayerState::new(world_map),
         }
     }
 
@@ -370,14 +373,16 @@ impl PhotonParser {
         let fallback_location_id = self.player_state.location_id();
         match (operation_code, packet_kind) {
             (OperationCode::AuctionGetOffers, "request") => {
-                let orders = extract_market_orders(parameters, fallback_location_id);
+                let orders =
+                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
                 return Some(ExtractedPacket::AuctionGetOffersRequest(AuctionGetOffers {
                     market_order_count: orders.len(),
                     market_orders: orders,
                 }));
             }
             (OperationCode::AuctionGetRequests, "request") => {
-                let orders = extract_market_orders(parameters, fallback_location_id);
+                let orders =
+                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
                 return Some(ExtractedPacket::AuctionGetRequestsRequest(
                     AuctionGetRequests {
                         market_order_count: orders.len(),
@@ -386,7 +391,8 @@ impl PhotonParser {
                 ));
             }
             (OperationCode::AuctionGetOffers, "response") => {
-                let orders = extract_market_orders(parameters, fallback_location_id);
+                let orders =
+                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -398,7 +404,8 @@ impl PhotonParser {
                 ));
             }
             (OperationCode::AuctionGetRequests, "response") => {
-                let orders = extract_market_orders(parameters, fallback_location_id);
+                let orders =
+                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -421,7 +428,8 @@ impl PhotonParser {
                 };
                 self.unconfirmed_trade = Some(AuctionTrade {
                     amount,
-                    operation: "buy",
+                    operation: operation_from_cached_order(cached_order.as_ref()),
+                    trade_type: TradeType::Instant,
                     order: cached_order,
                     order_id,
                 });
@@ -439,7 +447,8 @@ impl PhotonParser {
                 };
                 self.unconfirmed_trade = Some(AuctionTrade {
                     amount,
-                    operation: "sell",
+                    operation: operation_from_cached_order(cached_order.as_ref()),
+                    trade_type: TradeType::Instant,
                     order: cached_order,
                     order_id,
                 });
@@ -520,6 +529,7 @@ fn parse_event_code(params: &BTreeMap<u8, Value>) -> Result<i32> {
 fn extract_market_orders(
     params: &BTreeMap<u8, Value>,
     fallback_location_id: Option<i64>,
+    world_map: &WorldMap,
 ) -> Vec<CachedOrder> {
     let Some(raw_orders) = params.get(&0) else {
         return Vec::new();
@@ -539,9 +549,21 @@ fn extract_market_orders(
             if order.location_id.is_none() {
                 order.location_id = fallback_location_id;
             }
+            if let Some(location_id) = order.location_id {
+                if let Some(location_name) = world_map.name_from_index(&location_id.to_string()) {
+                    order.location_name = Some(location_name.to_string());
+                    order.friendly_location_name = Some(location_name.to_string());
+                }
+            }
             order
         })
         .collect()
+}
+
+fn operation_from_cached_order(cached_order: Option<&CachedOrder>) -> OperationType {
+    cached_order
+        .map(|order| OperationType::from_auction_type(&order.auction_type))
+        .unwrap_or_else(|| OperationType::Unknown("missing_cached_order".to_string()))
 }
 
 fn direction(source: &str, destination: &str) -> &'static str {
@@ -658,6 +680,74 @@ mod tests {
 
         assert_eq!(response.market_orders[0].location_id, Some(2000));
         assert_eq!(response.market_orders[1].location_id, Some(9999));
+        assert_eq!(
+            response.market_orders[0].location_name.as_deref(),
+            Some("Bridgewatch")
+        );
+        assert_eq!(
+            response.market_orders[0].friendly_location_name.as_deref(),
+            Some("Bridgewatch")
+        );
+        assert_eq!(response.market_orders[1].location_name, None);
+        assert_eq!(response.market_orders[1].friendly_location_name, None);
+    }
+
+    #[test]
+    fn market_orders_resolve_location_names_from_location_id() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+
+        let mut params = market_order_params(14978117778);
+        params.insert(
+            0,
+            json!([
+                {
+                    "Amount": 2,
+                    "AuctionType": "offer",
+                    "BuyerCharacterId": null,
+                    "BuyerName": null,
+                    "DistanceFee": 0,
+                    "EnchantmentLevel": 0,
+                    "Expires": "2026-06-22T03:34:16.096699",
+                    "HasBuyerFetched": false,
+                    "HasSellerFetched": false,
+                    "Id": 14978117778_i64,
+                    "IsFinished": false,
+                    "ItemGroupTypeId": "T1_HIDE",
+                    "ItemTypeId": "T1_HIDE",
+                    "LocationId": 3008,
+                    "QualityLevel": 1,
+                    "ReferenceId": "7ae09894-4883-479b-932e-ff7914c82855",
+                    "SellerCharacterId": "07b8fbc0-c512-4054-bc53-12312af94df3",
+                    "SellerName": "CoelhoMalvado",
+                    "Tier": 1,
+                    "TotalPriceSilver": 100000,
+                    "UnitPriceSilver": 50000
+                }
+            ]),
+        );
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetOffers,
+                &params,
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AuctionGetOffersResponse(response) = extracted else {
+            panic!("expected auction get offers response");
+        };
+
+        assert_eq!(response.market_orders[0].location_id, Some(3008));
+        assert_eq!(
+            response.market_orders[0].location_name.as_deref(),
+            Some("Martlock Market")
+        );
+        assert_eq!(
+            response.market_orders[0].friendly_location_name.as_deref(),
+            Some("Martlock Market")
+        );
     }
 
     #[test]
@@ -725,6 +815,13 @@ mod tests {
             request.cached_order.as_ref().map(|order| order.id),
             request.order_id
         );
+        assert_eq!(
+            parser
+                .unconfirmed_trade
+                .as_ref()
+                .map(|trade| trade.operation.clone()),
+            Some(OperationType::Buy)
+        );
     }
 
     #[test]
@@ -734,7 +831,7 @@ mod tests {
             .extract_operation(
                 "response",
                 OperationCode::AuctionGetRequests,
-                &market_order_params(14977174637),
+                &market_order_params_with_type(14977174637, "request"),
                 Some(0),
             )
             .unwrap();
@@ -770,6 +867,20 @@ mod tests {
         };
 
         assert!(response.success);
+        assert_eq!(
+            response
+                .confirmed_trade
+                .as_ref()
+                .map(|trade| trade.operation.clone()),
+            Some(OperationType::Sell)
+        );
+        assert_eq!(
+            response
+                .confirmed_trade
+                .as_ref()
+                .map(|trade| trade.trade_type.clone()),
+            Some(TradeType::Instant)
+        );
         assert_eq!(
             response
                 .confirmed_trade
@@ -829,13 +940,17 @@ mod tests {
     }
 
     fn market_order_params(order_id: i64) -> BTreeMap<u8, Value> {
+        market_order_params_with_type(order_id, "offer")
+    }
+
+    fn market_order_params_with_type(order_id: i64, auction_type: &str) -> BTreeMap<u8, Value> {
         let mut params = BTreeMap::new();
         params.insert(
             0,
             json!([
                 {
                     "Amount": 2,
-                    "AuctionType": "offer",
+                    "AuctionType": auction_type,
                     "BuyerCharacterId": null,
                     "BuyerName": null,
                     "DistanceFee": 0,
