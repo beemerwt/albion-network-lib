@@ -1,4 +1,6 @@
-#[derive(Clone, Debug, PartialEq, Eq)]
+use serde::Serialize;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum AlbionLocation {
     Unset,
     Unknown,
@@ -17,6 +19,13 @@ impl AlbionLocation {
     pub fn location_id(&self) -> Option<i64> {
         match self {
             Self::Known { index, .. } => index.parse().ok(),
+            Self::Unset | Self::Unknown => None,
+        }
+    }
+
+    pub fn location_index(&self) -> Option<&str> {
+        match self {
+            Self::Known { index, .. } => Some(index),
             Self::Unset | Self::Unknown => None,
         }
     }

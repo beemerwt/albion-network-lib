@@ -17,7 +17,7 @@ pub struct CachedOrder {
     pub is_finished: bool,
     pub item_group_type_id: String,
     pub item_type_id: String,
-    pub location_id: Option<i64>,
+    pub location_id: Option<String>,
     pub location_name: Option<String>,
     pub friendly_location_name: Option<String>,
     pub quality_level: i64,
@@ -115,5 +115,36 @@ mod tests {
             order.auction_type,
             AuctionType::Unknown("custom".to_string())
         );
+    }
+
+    #[test]
+    fn parses_location_id_as_index_string() {
+        let value = json!({
+            "Amount": 1,
+            "AuctionType": "offer",
+            "BuyerCharacterId": null,
+            "BuyerName": null,
+            "DistanceFee": 0,
+            "EnchantmentLevel": 0,
+            "Expires": "2026-06-25T07:55:20.513833",
+            "HasBuyerFetched": false,
+            "HasSellerFetched": false,
+            "Id": 14990497605_i64,
+            "IsFinished": false,
+            "ItemGroupTypeId": "T1_HIDE",
+            "ItemTypeId": "T1_HIDE",
+            "LocationId": "3008",
+            "QualityLevel": 1,
+            "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec287",
+            "SellerCharacterId": null,
+            "SellerName": null,
+            "Tier": 1,
+            "TotalPriceSilver": 500000,
+            "UnitPriceSilver": 50000
+        });
+
+        let order: CachedOrder = serde_json::from_value(value).unwrap();
+
+        assert_eq!(order.location_id.as_deref(), Some("3008"));
     }
 }

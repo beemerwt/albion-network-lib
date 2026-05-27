@@ -1,7 +1,9 @@
 use crate::{
+    models::AlbionMail,
     requests::{AuctionBuyOffer, AuctionGetOffers, AuctionGetRequests, AuctionSellSpecificItem},
     responses::{
-        AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTradeResponse, JoinResponse,
+        AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTradeResponse, GetMailInfos,
+        JoinResponse,
     },
 };
 use serde::Serialize;
@@ -19,6 +21,8 @@ pub enum ExtractedPacket {
     AuctionTradeResponse(AuctionTradeResponse),
     JoinResponse(JoinResponse),
     MarketPlaceNotification(MarketPlaceNotification),
+    GetMailInfos(GetMailInfos),
+    AlbionMail(AlbionMail),
 }
 
 impl ExtractedPacket {

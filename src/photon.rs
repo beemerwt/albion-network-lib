@@ -2,7 +2,9 @@ use crate::{
     error::Result,
     event_codes::EventCode,
     extracted_packet::{ExtractedPacket, MarketPlaceNotification},
-    models::{CachedOrder, OperationType, PlayerState, TradeType, WorldMap},
+    models::{
+        AlbionMail, CachedOrder, MailInfoType, OperationType, PlayerState, TradeType, WorldMap,
+    },
     names,
     operation_codes::OperationCode,
     packet::DecodedPacket,
@@ -13,10 +15,8 @@ use crate::{
         auction_sell_specific_item::AuctionSellSpecificItem as AuctionSellSpecificItemRequest,
     },
     responses::{
-        auction_get_offers::AuctionGetOffersResult,
-        auction_get_requests::AuctionGetRequestsResult,
-        auction_trade::{AuctionTrade, AuctionTradeResponse},
-        join_response::JoinResponse,
+        AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTrade, AuctionTradeResponse,
+        GetMailInfos, JoinResponse, ReadMail,
     },
     util::{params_to_json, read_i32_be, to_signed_short, value_i64},
 };
@@ -41,6 +41,14 @@ struct PendingSegment {
     total_length: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MailInfoMetadata {
+    mail_id: i64,
+    location_id: String,
+    info_type: MailInfoType,
+    received: i64,
+}
+
 pub struct PhotonParser {
     file_name: String,
     debug: bool,
@@ -50,6 +58,9 @@ pub struct PhotonParser {
     decoded_packets: Vec<DecodedPacket>,
     market_orders_by_id: HashMap<i64, CachedOrder>,
     unconfirmed_trade: Option<AuctionTrade>,
+    mail_infos_by_id: HashMap<i64, MailInfoMetadata>,
+    read_mails_by_id: HashMap<i64, ReadMail>,
+    albion_mails_by_id: HashMap<i64, AlbionMail>,
     player_state: PlayerState,
 }
 
@@ -70,6 +81,9 @@ impl PhotonParser {
             decoded_packets: Vec::new(),
             market_orders_by_id: HashMap::new(),
             unconfirmed_trade: None,
+            mail_infos_by_id: HashMap::new(),
+            read_mails_by_id: HashMap::new(),
+            albion_mails_by_id: HashMap::new(),
             player_state: PlayerState::new(world_map),
         }
     }
@@ -88,6 +102,10 @@ impl PhotonParser {
 
     pub fn player_state_mut(&mut self) -> &mut PlayerState {
         &mut self.player_state
+    }
+
+    pub fn albion_mails(&self) -> &HashMap<i64, AlbionMail> {
+        &self.albion_mails_by_id
     }
 
     pub fn into_decoded_packets(self) -> Vec<DecodedPacket> {
@@ -370,11 +388,11 @@ impl PhotonParser {
         parameters: &BTreeMap<u8, Value>,
         return_code: Option<i16>,
     ) -> Option<ExtractedPacket> {
-        let fallback_location_id = self.player_state.location_id();
+        let fallback_location_index = self.player_state.location_index();
         match (operation_code, packet_kind) {
             (OperationCode::AuctionGetOffers, "request") => {
                 let orders =
-                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
+                    extract_market_orders(parameters, fallback_location_index, &self.world_map);
                 return Some(ExtractedPacket::AuctionGetOffersRequest(AuctionGetOffers {
                     market_order_count: orders.len(),
                     market_orders: orders,
@@ -382,7 +400,7 @@ impl PhotonParser {
             }
             (OperationCode::AuctionGetRequests, "request") => {
                 let orders =
-                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
+                    extract_market_orders(parameters, fallback_location_index, &self.world_map);
                 return Some(ExtractedPacket::AuctionGetRequestsRequest(
                     AuctionGetRequests {
                         market_order_count: orders.len(),
@@ -392,7 +410,7 @@ impl PhotonParser {
             }
             (OperationCode::AuctionGetOffers, "response") => {
                 let orders =
-                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
+                    extract_market_orders(parameters, fallback_location_index, &self.world_map);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -405,7 +423,7 @@ impl PhotonParser {
             }
             (OperationCode::AuctionGetRequests, "response") => {
                 let orders =
-                    extract_market_orders(parameters, fallback_location_id, &self.world_map);
+                    extract_market_orders(parameters, fallback_location_index, &self.world_map);
                 for order in &orders {
                     self.market_orders_by_id.insert(order.id, order.clone());
                 }
@@ -428,6 +446,7 @@ impl PhotonParser {
                 };
                 self.unconfirmed_trade = Some(AuctionTrade {
                     amount,
+                    silver_amount: silver_amount(amount, cached_order.as_ref()),
                     operation: operation_from_cached_order(cached_order.as_ref()),
                     trade_type: TradeType::Instant,
                     order: cached_order,
@@ -447,6 +466,7 @@ impl PhotonParser {
                 };
                 self.unconfirmed_trade = Some(AuctionTrade {
                     amount,
+                    silver_amount: silver_amount(amount, cached_order.as_ref()),
                     operation: operation_from_cached_order(cached_order.as_ref()),
                     trade_type: TradeType::Instant,
                     order: cached_order,
@@ -477,10 +497,70 @@ impl PhotonParser {
                     .set_location_raw(&response.player_location);
                 return Some(ExtractedPacket::JoinResponse(response));
             }
+            (OperationCode::GetMailInfos, "response") => {
+                let response = GetMailInfos::from_params(parameters);
+                self.cache_mail_infos(&response);
+                return Some(ExtractedPacket::GetMailInfos(response));
+            }
+            (OperationCode::ReadMail, "response") => {
+                let response = ReadMail::from_params(parameters);
+                return self
+                    .cache_read_mail(response)
+                    .map(ExtractedPacket::AlbionMail);
+            }
             _ => {}
         }
 
         None
+    }
+
+    fn cache_mail_infos(&mut self, response: &GetMailInfos) {
+        for index in 0..response.mail_ids.len() {
+            let Some(location_id) = response.location_ids.get(index).cloned() else {
+                continue;
+            };
+            let Some(info_type) = response.types.get(index).copied() else {
+                continue;
+            };
+            let Some(received) = response.received.get(index).copied() else {
+                continue;
+            };
+
+            let metadata = MailInfoMetadata {
+                mail_id: response.mail_ids[index],
+                location_id,
+                info_type,
+                received,
+            };
+            self.mail_infos_by_id
+                .insert(metadata.mail_id, metadata.clone());
+
+            if let Some(read_mail) = self.read_mails_by_id.get(&metadata.mail_id).cloned() {
+                let mail = self.build_albion_mail(&metadata, &read_mail);
+                self.albion_mails_by_id.insert(mail.id, mail);
+            }
+        }
+    }
+
+    fn cache_read_mail(&mut self, response: ReadMail) -> Option<AlbionMail> {
+        self.read_mails_by_id
+            .insert(response.mail_id, response.clone());
+        let metadata = self.mail_infos_by_id.get(&response.mail_id)?.clone();
+        let mail = self.build_albion_mail(&metadata, &response);
+        self.albion_mails_by_id.insert(mail.id, mail.clone());
+        Some(mail)
+    }
+
+    fn build_albion_mail(&self, metadata: &MailInfoMetadata, read_mail: &ReadMail) -> AlbionMail {
+        AlbionMail::from_correlated(
+            metadata.mail_id,
+            metadata.location_id.clone(),
+            self.player_state.player_name.clone(),
+            metadata.info_type,
+            metadata.received,
+            read_mail.mail_string.clone(),
+            Some(self.world_map.resolve_location(&metadata.location_id)),
+        )
     }
 
     fn extract_event(
@@ -528,7 +608,7 @@ fn parse_event_code(params: &BTreeMap<u8, Value>) -> Result<i32> {
 
 fn extract_market_orders(
     params: &BTreeMap<u8, Value>,
-    fallback_location_id: Option<i64>,
+    fallback_location_index: Option<&str>,
     world_map: &WorldMap,
 ) -> Vec<CachedOrder> {
     let Some(raw_orders) = params.get(&0) else {
@@ -547,10 +627,10 @@ fn extract_market_orders(
         })
         .map(|mut order: CachedOrder| {
             if order.location_id.is_none() {
-                order.location_id = fallback_location_id;
+                order.location_id = fallback_location_index.map(str::to_string);
             }
-            if let Some(location_id) = order.location_id {
-                if let Some(location_name) = world_map.name_from_index(&location_id.to_string()) {
+            if let Some(location_id) = order.location_id.as_deref() {
+                if let Some(location_name) = world_map.name_from_index(location_id) {
                     order.location_name = Some(location_name.to_string());
                     order.friendly_location_name = Some(location_name.to_string());
                 }
@@ -566,6 +646,15 @@ fn operation_from_cached_order(cached_order: Option<&CachedOrder>) -> OperationT
         .unwrap_or_else(|| OperationType::Unknown("missing_cached_order".to_string()))
 }
 
+fn silver_amount(amount: Option<i64>, cached_order: Option<&CachedOrder>) -> Option<i64> {
+    let amount = amount?;
+    let order = cached_order?;
+    Some(
+        (((order.unit_price_silver * amount) - order.distance_fee) as f64 / 10_000.0).floor()
+            as i64,
+    )
+}
+
 fn direction(source: &str, destination: &str) -> &'static str {
     if source.ends_with(":5056") {
         "server_to_client"
@@ -579,6 +668,7 @@ fn direction(source: &str, destination: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{AlbionLocation, AuctionType};
     use serde_json::json;
 
     #[test]
@@ -653,7 +743,7 @@ mod tests {
                     "IsFinished": false,
                     "ItemGroupTypeId": "T1_HIDE",
                     "ItemTypeId": "T1_HIDE",
-                    "LocationId": 9999,
+                    "LocationId": "9999",
                     "QualityLevel": 1,
                     "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec288",
                     "SellerCharacterId": null,
@@ -678,8 +768,14 @@ mod tests {
             panic!("expected auction get offers response");
         };
 
-        assert_eq!(response.market_orders[0].location_id, Some(2000));
-        assert_eq!(response.market_orders[1].location_id, Some(9999));
+        assert_eq!(
+            response.market_orders[0].location_id.as_deref(),
+            Some("2000")
+        );
+        assert_eq!(
+            response.market_orders[1].location_id.as_deref(),
+            Some("9999")
+        );
         assert_eq!(
             response.market_orders[0].location_name.as_deref(),
             Some("Bridgewatch")
@@ -714,7 +810,7 @@ mod tests {
                     "IsFinished": false,
                     "ItemGroupTypeId": "T1_HIDE",
                     "ItemTypeId": "T1_HIDE",
-                    "LocationId": 3008,
+                    "LocationId": "3008",
                     "QualityLevel": 1,
                     "ReferenceId": "7ae09894-4883-479b-932e-ff7914c82855",
                     "SellerCharacterId": "07b8fbc0-c512-4054-bc53-12312af94df3",
@@ -739,7 +835,10 @@ mod tests {
             panic!("expected auction get offers response");
         };
 
-        assert_eq!(response.market_orders[0].location_id, Some(3008));
+        assert_eq!(
+            response.market_orders[0].location_id.as_deref(),
+            Some("3008")
+        );
         assert_eq!(
             response.market_orders[0].location_name.as_deref(),
             Some("Martlock Market")
@@ -822,6 +921,13 @@ mod tests {
                 .map(|trade| trade.operation.clone()),
             Some(OperationType::Buy)
         );
+        assert_eq!(
+            parser
+                .unconfirmed_trade
+                .as_ref()
+                .and_then(|trade| trade.silver_amount),
+            Some(5)
+        );
     }
 
     #[test]
@@ -885,6 +991,13 @@ mod tests {
             response
                 .confirmed_trade
                 .as_ref()
+                .and_then(|trade| trade.silver_amount),
+            Some(5)
+        );
+        assert_eq!(
+            response
+                .confirmed_trade
+                .as_ref()
                 .and_then(|trade| trade.order.as_ref())
                 .map(|order| order.id),
             Some(14977174637)
@@ -906,6 +1019,133 @@ mod tests {
         };
 
         assert_eq!(notification.notification, json!({"message": "sold"}));
+    }
+
+    #[test]
+    fn trade_silver_amount_accounts_for_scaled_distance_fee() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetOffers,
+                &market_order_params_with_price(14978117778, "offer", 50_000, 20_000),
+                Some(0),
+            )
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(1, json!(3));
+        params.insert(2, json!(14978117778_i64));
+
+        parser
+            .extract_operation("request", OperationCode::AuctionBuyOffer, &params, None)
+            .unwrap();
+
+        assert_eq!(
+            parser
+                .unconfirmed_trade
+                .as_ref()
+                .and_then(|trade| trade.silver_amount),
+            Some(13)
+        );
+    }
+
+    #[test]
+    fn get_mail_infos_then_read_mail_returns_correlated_albion_mail() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        parser.player_state_mut().set_player_name("PlayerOne");
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::GetMailInfos,
+                &mail_info_params(42),
+                Some(0),
+            )
+            .unwrap();
+        assert!(matches!(extracted, ExtractedPacket::GetMailInfos(_)));
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::ReadMail,
+                &read_mail_params(42, "mail body"),
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AlbionMail(mail) = extracted else {
+            panic!("expected correlated albion mail");
+        };
+
+        assert_eq!(mail.id, 42);
+        assert_eq!(mail.location_id, "2000");
+        assert_eq!(mail.player_name, "PlayerOne");
+        assert_eq!(
+            mail.info_type,
+            MailInfoType::MarketPlaceSellOrderFinishedSummary
+        );
+        assert_eq!(mail.auction_type, AuctionType::Offer);
+        assert_eq!(mail.received, 1_717_171_717);
+        assert_eq!(mail.mail_string, "mail body");
+        assert_eq!(
+            mail.location,
+            Some(AlbionLocation::Known {
+                index: "2000".to_string(),
+                unique_name: "Bridgewatch".to_string(),
+            })
+        );
+        assert_eq!(parser.albion_mails().get(&42), Some(&mail));
+    }
+
+    #[test]
+    fn read_mail_before_get_mail_infos_is_cached_for_later_correlation() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+
+        let extracted = parser.extract_operation(
+            "response",
+            OperationCode::ReadMail,
+            &read_mail_params(42, "mail body"),
+            Some(0),
+        );
+        assert!(extracted.is_none());
+        assert!(parser.albion_mails().is_empty());
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::GetMailInfos,
+                &mail_info_params(42),
+                Some(0),
+            )
+            .unwrap();
+        assert!(matches!(extracted, ExtractedPacket::GetMailInfos(_)));
+
+        let mail = parser.albion_mails().get(&42).unwrap();
+        assert_eq!(mail.id, 42);
+        assert_eq!(mail.mail_string, "mail body");
+        assert_eq!(mail.location_id, "2000");
+    }
+
+    #[test]
+    fn incomplete_get_mail_infos_rows_are_skipped_without_panic() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let mut params = BTreeMap::new();
+        params.insert(3, json!([42, 43]));
+        params.insert(7, json!(["2000"]));
+        params.insert(11, json!([1]));
+        params.insert(12, json!([]));
+
+        let extracted = parser
+            .extract_operation("response", OperationCode::GetMailInfos, &params, Some(0))
+            .unwrap();
+
+        let ExtractedPacket::GetMailInfos(response) = extracted else {
+            panic!("expected get mail infos");
+        };
+
+        assert_eq!(response.mail_ids, vec![42, 43]);
+        assert!(parser.albion_mails().is_empty());
     }
 
     #[test]
@@ -939,11 +1179,36 @@ mod tests {
         );
     }
 
+    fn mail_info_params(mail_id: i64) -> BTreeMap<u8, Value> {
+        let mut params = BTreeMap::new();
+        params.insert(3, json!([mail_id]));
+        params.insert(7, json!(["2000"]));
+        params.insert(11, json!([1]));
+        params.insert(12, json!([1_717_171_717_i64]));
+        params
+    }
+
+    fn read_mail_params(mail_id: i64, mail_string: &str) -> BTreeMap<u8, Value> {
+        let mut params = BTreeMap::new();
+        params.insert(0, json!(mail_id));
+        params.insert(1, json!(mail_string));
+        params
+    }
+
     fn market_order_params(order_id: i64) -> BTreeMap<u8, Value> {
         market_order_params_with_type(order_id, "offer")
     }
 
     fn market_order_params_with_type(order_id: i64, auction_type: &str) -> BTreeMap<u8, Value> {
+        market_order_params_with_price(order_id, auction_type, 50_000, 0)
+    }
+
+    fn market_order_params_with_price(
+        order_id: i64,
+        auction_type: &str,
+        unit_price_silver: i64,
+        distance_fee: i64,
+    ) -> BTreeMap<u8, Value> {
         let mut params = BTreeMap::new();
         params.insert(
             0,
@@ -953,7 +1218,7 @@ mod tests {
                     "AuctionType": auction_type,
                     "BuyerCharacterId": null,
                     "BuyerName": null,
-                    "DistanceFee": 0,
+                    "DistanceFee": distance_fee,
                     "EnchantmentLevel": 0,
                     "Expires": "2026-06-22T03:34:16.096699",
                     "HasBuyerFetched": false,
@@ -968,8 +1233,8 @@ mod tests {
                     "SellerCharacterId": "07b8fbc0-c512-4054-bc53-12312af94df3",
                     "SellerName": "CoelhoMalvado",
                     "Tier": 1,
-                    "TotalPriceSilver": 100000,
-                    "UnitPriceSilver": 50000
+                    "TotalPriceSilver": unit_price_silver * 2,
+                    "UnitPriceSilver": unit_price_silver
                 }
             ]),
         );

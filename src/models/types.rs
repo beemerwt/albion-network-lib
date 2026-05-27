@@ -140,9 +140,45 @@ impl Serialize for TradeType {
     }
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub enum MailInfoType {
+    Unknown = 0,
+    MarketPlaceSellOrderFinishedSummary = 1,
+    MarketPlaceBuyOrderFinishedSummary = 2,
+    MarketPlaceBuyOrderExpiredSummary = 3,
+    MarketPlaceSellOrderExpiredSummary = 4,
+    BlackMarketSellOrderExpiredSummary = 5,
+}
+
+impl MailInfoType {
+    pub fn from_i64(value: i64) -> Self {
+        match value {
+            1 => Self::MarketPlaceSellOrderFinishedSummary,
+            2 => Self::MarketPlaceBuyOrderFinishedSummary,
+            3 => Self::MarketPlaceBuyOrderExpiredSummary,
+            4 => Self::MarketPlaceSellOrderExpiredSummary,
+            5 => Self::BlackMarketSellOrderExpiredSummary,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn auction_type(self) -> AuctionType {
+        match self {
+            Self::MarketPlaceSellOrderFinishedSummary
+            | Self::MarketPlaceSellOrderExpiredSummary
+            | Self::BlackMarketSellOrderExpiredSummary => AuctionType::Offer,
+            Self::MarketPlaceBuyOrderFinishedSummary | Self::MarketPlaceBuyOrderExpiredSummary => {
+                AuctionType::Request
+            }
+            Self::Unknown => AuctionType::Unknown("unknown_mail_info_type".to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AuctionType, OperationType, TradeType};
+    use super::{AuctionType, MailInfoType, OperationType, TradeType};
 
     #[test]
     fn auction_type_maps_known_strings_and_preserves_unknowns() {
@@ -177,6 +213,35 @@ mod tests {
         assert_eq!(
             TradeType::from_str("custom"),
             TradeType::Unknown("custom".to_string())
+        );
+    }
+
+    #[test]
+    fn mail_info_type_maps_known_codes_and_defaults_unknowns() {
+        assert_eq!(
+            MailInfoType::from_i64(1),
+            MailInfoType::MarketPlaceSellOrderFinishedSummary
+        );
+        assert_eq!(
+            MailInfoType::from_i64(2),
+            MailInfoType::MarketPlaceBuyOrderFinishedSummary
+        );
+        assert_eq!(MailInfoType::from_i64(99), MailInfoType::Unknown);
+    }
+
+    #[test]
+    fn mail_info_type_maps_to_auction_type() {
+        assert_eq!(
+            MailInfoType::MarketPlaceSellOrderFinishedSummary.auction_type(),
+            AuctionType::Offer
+        );
+        assert_eq!(
+            MailInfoType::MarketPlaceBuyOrderFinishedSummary.auction_type(),
+            AuctionType::Request
+        );
+        assert_eq!(
+            MailInfoType::Unknown.auction_type(),
+            AuctionType::Unknown("unknown_mail_info_type".to_string())
         );
     }
 }

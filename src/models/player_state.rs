@@ -27,6 +27,10 @@ impl PlayerState {
         self.location.location_id()
     }
 
+    pub fn location_index(&self) -> Option<&str> {
+        self.location.location_index()
+    }
+
     pub fn user_object_id(&self) -> Option<i32> {
         self.user_object_id
     }
