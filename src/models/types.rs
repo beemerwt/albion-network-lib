@@ -140,7 +140,7 @@ impl Serialize for TradeType {
     }
 }
 
-#[repr(u8)]
+#[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub enum MailInfoType {
     Unknown = 0,
@@ -151,6 +151,14 @@ pub enum MailInfoType {
     BlackMarketSellOrderExpiredSummary = 5,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MailInfoMetadata {
+    pub mail_id: i64,
+    pub location_id: String,
+    pub info_type: MailInfoType,
+    pub received: i64,
+}
+
 impl MailInfoType {
     pub fn from_i64(value: i64) -> Self {
         match value {
@@ -159,6 +167,27 @@ impl MailInfoType {
             3 => Self::MarketPlaceBuyOrderExpiredSummary,
             4 => Self::MarketPlaceSellOrderExpiredSummary,
             5 => Self::BlackMarketSellOrderExpiredSummary,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            value if value.eq_ignore_ascii_case("MARKETPLACE_SELLORDER_FINISHED_SUMMARY") => {
+                Self::MarketPlaceSellOrderFinishedSummary
+            }
+            value if value.eq_ignore_ascii_case("MARKETPLACE_BUYORDER_FINISHED_SUMMARY") => {
+                Self::MarketPlaceBuyOrderFinishedSummary
+            }
+            value if value.eq_ignore_ascii_case("MARKETPLACE_BUYORDER_EXPIRED_SUMMARY") => {
+                Self::MarketPlaceBuyOrderExpiredSummary
+            }
+            value if value.eq_ignore_ascii_case("MARKETPLACE_SELLORDER_EXPIRED_SUMMARY") => {
+                Self::MarketPlaceSellOrderExpiredSummary
+            }
+            value if value.eq_ignore_ascii_case("BLACKMARKET_SELLORDER_EXPIRED_SUMMARY") => {
+                Self::BlackMarketSellOrderExpiredSummary
+            }
             _ => Self::Unknown,
         }
     }
@@ -227,6 +256,31 @@ mod tests {
             MailInfoType::MarketPlaceBuyOrderFinishedSummary
         );
         assert_eq!(MailInfoType::from_i64(99), MailInfoType::Unknown);
+    }
+
+    #[test]
+    fn mail_info_type_maps_source_strings_and_defaults_unknowns() {
+        assert_eq!(
+            MailInfoType::from_str("MARKETPLACE_SELLORDER_FINISHED_SUMMARY"),
+            MailInfoType::MarketPlaceSellOrderFinishedSummary
+        );
+        assert_eq!(
+            MailInfoType::from_str("marketplace_buyorder_finished_summary"),
+            MailInfoType::MarketPlaceBuyOrderFinishedSummary
+        );
+        assert_eq!(
+            MailInfoType::from_str("MARKETPLACE_BUYORDER_EXPIRED_SUMMARY"),
+            MailInfoType::MarketPlaceBuyOrderExpiredSummary
+        );
+        assert_eq!(
+            MailInfoType::from_str("MARKETPLACE_SELLORDER_EXPIRED_SUMMARY"),
+            MailInfoType::MarketPlaceSellOrderExpiredSummary
+        );
+        assert_eq!(
+            MailInfoType::from_str("BLACKMARKET_SELLORDER_EXPIRED_SUMMARY"),
+            MailInfoType::BlackMarketSellOrderExpiredSummary
+        );
+        assert_eq!(MailInfoType::from_str("unexpected"), MailInfoType::Unknown);
     }
 
     #[test]

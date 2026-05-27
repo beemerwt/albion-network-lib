@@ -3,7 +3,7 @@ use crate::{
     event_codes::EventCode,
     extracted_packet::{ExtractedPacket, MarketPlaceNotification},
     models::{
-        AlbionMail, CachedOrder, MailInfoType, OperationType, PlayerState, TradeType, WorldMap,
+        AlbionMail, CachedOrder, MailInfoMetadata, OperationType, PlayerState, TradeType, WorldMap,
     },
     names,
     operation_codes::OperationCode,
@@ -39,14 +39,6 @@ struct PendingSegment {
     payload: Vec<u8>,
     written: usize,
     total_length: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct MailInfoMetadata {
-    mail_id: i64,
-    location_id: String,
-    info_type: MailInfoType,
-    received: i64,
 }
 
 pub struct PhotonParser {
@@ -558,7 +550,7 @@ impl PhotonParser {
             self.player_state.player_name.clone(),
             metadata.info_type,
             metadata.received,
-            read_mail.mail_string.clone(),
+            &read_mail.mail_string,
             Some(self.world_map.resolve_location(&metadata.location_id)),
         )
     }
@@ -668,7 +660,7 @@ fn direction(source: &str, destination: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{AlbionLocation, AuctionType};
+    use crate::models::{AlbionLocation, AuctionType, MailInfoType};
     use serde_json::json;
 
     #[test]
@@ -1087,7 +1079,6 @@ mod tests {
         );
         assert_eq!(mail.auction_type, AuctionType::Offer);
         assert_eq!(mail.received, 1_717_171_717);
-        assert_eq!(mail.mail_string, "mail body");
         assert_eq!(
             mail.location,
             Some(AlbionLocation::Known {
@@ -1123,7 +1114,6 @@ mod tests {
 
         let mail = parser.albion_mails().get(&42).unwrap();
         assert_eq!(mail.id, 42);
-        assert_eq!(mail.mail_string, "mail body");
         assert_eq!(mail.location_id, "2000");
     }
 
@@ -1133,7 +1123,7 @@ mod tests {
         let mut params = BTreeMap::new();
         params.insert(3, json!([42, 43]));
         params.insert(7, json!(["2000"]));
-        params.insert(11, json!([1]));
+        params.insert(11, json!(["MARKETPLACE_SELLORDER_FINISHED_SUMMARY"]));
         params.insert(12, json!([]));
 
         let extracted = parser
@@ -1183,7 +1173,7 @@ mod tests {
         let mut params = BTreeMap::new();
         params.insert(3, json!([mail_id]));
         params.insert(7, json!(["2000"]));
-        params.insert(11, json!([1]));
+        params.insert(11, json!(["MARKETPLACE_SELLORDER_FINISHED_SUMMARY"]));
         params.insert(12, json!([1_717_171_717_i64]));
         params
     }

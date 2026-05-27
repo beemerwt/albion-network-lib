@@ -9,6 +9,19 @@ pub struct ReadMail {
     pub mail_string: String,
 }
 
+impl ReadMail {
+    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
+        Self {
+            mail_id: parameters.get(&0).and_then(value_i64).unwrap_or_default(),
+            mail_string: parameters
+                .get(&1)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ReadMail;
@@ -45,18 +58,5 @@ mod tests {
 
         assert_eq!(response.mail_id, 0);
         assert_eq!(response.mail_string, "");
-    }
-}
-
-impl ReadMail {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
-        Self {
-            mail_id: parameters.get(&0).and_then(value_i64).unwrap_or_default(),
-            mail_string: parameters
-                .get(&1)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-        }
     }
 }

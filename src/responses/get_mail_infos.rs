@@ -22,8 +22,8 @@ impl GetMailInfos {
                 .map(|values| {
                     values
                         .iter()
-                        .filter_map(value_i64)
-                        .map(MailInfoType::from_i64)
+                        .filter_map(Value::as_str)
+                        .map(MailInfoType::from_str)
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -64,7 +64,14 @@ mod tests {
         let mut params = BTreeMap::new();
         params.insert(3, json!([101, "102", true, {"ignored": true}]));
         params.insert(7, json!(["2000", "BLACKBANK-2310"]));
-        params.insert(11, json!([1, 2, 99]));
+        params.insert(
+            11,
+            json!([
+                "MARKETPLACE_SELLORDER_FINISHED_SUMMARY",
+                "MARKETPLACE_BUYORDER_FINISHED_SUMMARY",
+                "unexpected"
+            ]),
+        );
         params.insert(12, json!([1_717_171_717_i64, "1717171718"]));
 
         let response = GetMailInfos::from_params(&params);
