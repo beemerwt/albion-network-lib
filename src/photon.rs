@@ -508,7 +508,11 @@ impl PhotonParser {
 
     fn cache_mail_infos(&mut self, response: &GetMailInfos) {
         for index in 0..response.mail_ids.len() {
-            let Some(location_id) = response.location_ids.get(index).cloned() else {
+            let Some(location_id) = response
+                .location_ids
+                .get(index)
+                .map(|location_id| normalize_mail_location_id(location_id))
+            else {
                 continue;
             };
             let Some(info_type) = response.types.get(index).copied() else {
@@ -655,6 +659,17 @@ fn direction(source: &str, destination: &str) -> &'static str {
     } else {
         "unknown"
     }
+}
+
+fn normalize_mail_location_id(location_id: &str) -> String {
+    if location_id == "@BLACK_MARKET" {
+        return "3003".to_string();
+    }
+    location_id
+        .split('@')
+        .nth(1)
+        .unwrap_or(location_id)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -1115,6 +1130,72 @@ mod tests {
         let mail = parser.albion_mails().get(&42).unwrap();
         assert_eq!(mail.id, 42);
         assert_eq!(mail.location_id, "2000");
+    }
+
+    #[test]
+    fn mail_info_location_ids_are_normalized_before_correlation() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let mut mail_info = mail_info_params(42);
+        mail_info.insert(7, json!(["location@2000"]));
+
+        parser
+            .extract_operation("response", OperationCode::GetMailInfos, &mail_info, Some(0))
+            .unwrap();
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::ReadMail,
+                &read_mail_params(42, "mail body"),
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AlbionMail(mail) = extracted else {
+            panic!("expected correlated albion mail");
+        };
+
+        assert_eq!(mail.location_id, "2000");
+        assert_eq!(
+            mail.location,
+            Some(AlbionLocation::Known {
+                index: "2000".to_string(),
+                unique_name: "Bridgewatch".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn black_market_mail_location_maps_to_caerleon_index() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let mut mail_info = mail_info_params(42);
+        mail_info.insert(7, json!(["@BLACK_MARKET"]));
+
+        parser
+            .extract_operation("response", OperationCode::GetMailInfos, &mail_info, Some(0))
+            .unwrap();
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::ReadMail,
+                &read_mail_params(42, "mail body"),
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AlbionMail(mail) = extracted else {
+            panic!("expected correlated albion mail");
+        };
+
+        assert_eq!(mail.location_id, "3003");
+        assert_eq!(
+            mail.location,
+            Some(AlbionLocation::Known {
+                index: "3003".to_string(),
+                unique_name: "Caerleon".to_string(),
+            })
+        );
     }
 
     #[test]
