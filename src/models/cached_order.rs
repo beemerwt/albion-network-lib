@@ -1,7 +1,8 @@
-use crate::models::AuctionType;
-use serde::{Deserialize, Serialize};
+use crate::models::{AlbionLocation, AuctionType};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct CachedOrder {
     pub amount: i64,
@@ -17,9 +18,7 @@ pub struct CachedOrder {
     pub is_finished: bool,
     pub item_group_type_id: String,
     pub item_type_id: String,
-    pub location_id: Option<String>,
-    pub location_name: Option<String>,
-    pub friendly_location_name: Option<String>,
+    pub location: AlbionLocation,
     pub quality_level: i64,
     pub reference_id: String,
     pub seller_character_id: Option<String>,
@@ -27,6 +26,71 @@ pub struct CachedOrder {
     pub tier: i64,
     pub total_price_silver: i64,
     pub unit_price_silver: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawCachedOrder {
+    amount: i64,
+    auction_type: AuctionType,
+    buyer_character_id: Option<String>,
+    buyer_name: Option<String>,
+    distance_fee: i64,
+    enchantment_level: i64,
+    expires: String,
+    has_buyer_fetched: bool,
+    has_seller_fetched: bool,
+    id: i64,
+    is_finished: bool,
+    item_group_type_id: String,
+    item_type_id: String,
+    location_id: Option<Value>,
+    quality_level: i64,
+    reference_id: String,
+    seller_character_id: Option<String>,
+    seller_name: Option<String>,
+    tier: i64,
+    total_price_silver: i64,
+    unit_price_silver: i64,
+}
+
+impl<'de> Deserialize<'de> for CachedOrder {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawCachedOrder::deserialize(deserializer)?;
+        Ok(Self {
+            amount: raw.amount,
+            auction_type: raw.auction_type,
+            buyer_character_id: raw.buyer_character_id,
+            buyer_name: raw.buyer_name,
+            distance_fee: raw.distance_fee,
+            enchantment_level: raw.enchantment_level,
+            expires: raw.expires,
+            has_buyer_fetched: raw.has_buyer_fetched,
+            has_seller_fetched: raw.has_seller_fetched,
+            id: raw.id,
+            is_finished: raw.is_finished,
+            item_group_type_id: raw.item_group_type_id,
+            item_type_id: raw.item_type_id,
+            location: location_from_value(raw.location_id),
+            quality_level: raw.quality_level,
+            reference_id: raw.reference_id,
+            seller_character_id: raw.seller_character_id,
+            seller_name: raw.seller_name,
+            tier: raw.tier,
+            total_price_silver: raw.total_price_silver,
+            unit_price_silver: raw.unit_price_silver,
+        })
+    }
+}
+
+fn location_from_value(value: Option<Value>) -> AlbionLocation {
+    match value {
+        Some(Value::String(id)) if !id.is_empty() => AlbionLocation::from_id(id),
+        _ => AlbionLocation::unknown(),
+    }
 }
 
 #[cfg(test)]
@@ -83,7 +147,7 @@ mod tests {
 
     #[test]
     fn preserves_unknown_auction_type() {
-        let mut value = json!({
+        let value = json!({
             "Amount": 1,
             "AuctionType": "custom",
             "BuyerCharacterId": null,
@@ -106,9 +170,6 @@ mod tests {
             "TotalPriceSilver": 500000,
             "UnitPriceSilver": 50000
         });
-        value["LocationName"] = json!(null);
-        value["FriendlyLocationName"] = json!(null);
-
         let order: CachedOrder = serde_json::from_value(value).unwrap();
 
         assert_eq!(
@@ -118,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_location_id_as_index_string() {
+    fn parses_location_id_as_id_only_location() {
         let value = json!({
             "Amount": 1,
             "AuctionType": "offer",
@@ -145,6 +206,40 @@ mod tests {
 
         let order: CachedOrder = serde_json::from_value(value).unwrap();
 
-        assert_eq!(order.location_id.as_deref(), Some("3008"));
+        assert_eq!(
+            order.location,
+            crate::models::AlbionLocation::from_id("3008")
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_location_id_deserializes_as_unknown_location() {
+        let value = json!({
+            "Amount": 1,
+            "AuctionType": "offer",
+            "BuyerCharacterId": null,
+            "BuyerName": null,
+            "DistanceFee": 0,
+            "EnchantmentLevel": 0,
+            "Expires": "2026-06-25T07:55:20.513833",
+            "HasBuyerFetched": false,
+            "HasSellerFetched": false,
+            "Id": 14990497605_i64,
+            "IsFinished": false,
+            "ItemGroupTypeId": "T1_HIDE",
+            "ItemTypeId": "T1_HIDE",
+            "LocationId": 3008,
+            "QualityLevel": 1,
+            "ReferenceId": "7bf5e58d-b835-4969-acba-297bf80ec287",
+            "SellerCharacterId": null,
+            "SellerName": null,
+            "Tier": 1,
+            "TotalPriceSilver": 500000,
+            "UnitPriceSilver": 50000
+        });
+
+        let order: CachedOrder = serde_json::from_value(value).unwrap();
+
+        assert_eq!(order.location, crate::models::AlbionLocation::unknown());
     }
 }

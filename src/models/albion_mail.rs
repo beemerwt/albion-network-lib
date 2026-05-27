@@ -4,7 +4,7 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AlbionMail {
     pub id: i64,
-    pub location_id: String,
+    pub location: AlbionLocation,
     pub player_name: String,
     pub info_type: MailInfoType,
     pub auction_type: AuctionType,
@@ -20,22 +20,20 @@ pub struct AlbionMail {
     pub is_set: bool,
     pub deleted: bool,
     pub item_name: String,
-    pub location: Option<AlbionLocation>,
 }
 
 impl AlbionMail {
     pub fn from_correlated(
         id: i64,
-        location_id: String,
+        location: AlbionLocation,
         player_name: String,
         info_type: MailInfoType,
         received: i64,
         mail_string: &str,
-        location: Option<AlbionLocation>,
     ) -> Self {
         let mut mail = Self {
             id,
-            location_id,
+            location,
             player_name,
             info_type,
             auction_type: info_type.auction_type(),
@@ -51,7 +49,6 @@ impl AlbionMail {
             is_set: false,
             deleted: false,
             item_name: String::new(),
-            location,
         };
         mail.set_data(mail_string);
         mail
@@ -168,19 +165,18 @@ mod tests {
     fn builds_first_pass_mail_from_correlated_parts() {
         let mail = AlbionMail::from_correlated(
             42,
-            "2000".to_string(),
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch"),
             "PlayerOne".to_string(),
             MailInfoType::MarketPlaceSellOrderFinishedSummary,
             1_717_171_717,
             "2|T4_HIDE|100000|50000",
-            Some(AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            }),
         );
 
         assert_eq!(mail.id, 42);
-        assert_eq!(mail.location_id, "2000");
+        assert_eq!(
+            mail.location,
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
+        );
         assert_eq!(mail.player_name, "PlayerOne");
         assert_eq!(
             mail.info_type,
@@ -196,13 +192,6 @@ mod tests {
         assert_eq!(mail.total_taxes, 0);
         assert!(mail.is_set);
         assert!(!mail.deleted);
-        assert_eq!(
-            mail.location,
-            Some(AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            })
-        );
     }
 
     #[test]
@@ -295,12 +284,11 @@ mod tests {
     fn mail(info_type: MailInfoType, mail_string: &str) -> AlbionMail {
         AlbionMail::from_correlated(
             42,
-            "2000".to_string(),
+            AlbionLocation::unknown(),
             "PlayerOne".to_string(),
             info_type,
             1_717_171_717,
             mail_string,
-            None,
         )
     }
 }

@@ -15,7 +15,7 @@ impl PlayerState {
     pub fn new(world_map: Arc<WorldMap>) -> Self {
         Self {
             world_map,
-            location: AlbionLocation::Unset,
+            location: AlbionLocation::unknown(),
             player_name: String::new(),
             albion_server: None,
             user_object_id: None,
@@ -73,7 +73,7 @@ mod tests {
     fn defaults_match_csharp_intent() {
         let state = state();
 
-        assert_eq!(state.location, AlbionLocation::Unset);
+        assert_eq!(state.location, AlbionLocation::unknown());
         assert_eq!(state.player_name, "");
         assert_eq!(state.user_object_id(), None);
     }

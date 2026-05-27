@@ -3,7 +3,8 @@ use crate::{
     event_codes::EventCode,
     extracted_packet::{ExtractedPacket, MarketPlaceNotification},
     models::{
-        AlbionMail, CachedOrder, MailInfoMetadata, OperationType, PlayerState, TradeType, WorldMap,
+        AlbionLocation, AlbionMail, CachedOrder, MailInfoMetadata, OperationType, PlayerState,
+        TradeType, WorldMap,
     },
     names,
     operation_codes::OperationCode,
@@ -550,12 +551,11 @@ impl PhotonParser {
     fn build_albion_mail(&self, metadata: &MailInfoMetadata, read_mail: &ReadMail) -> AlbionMail {
         AlbionMail::from_correlated(
             metadata.mail_id,
-            metadata.location_id.clone(),
+            self.world_map.resolve_location(&metadata.location_id),
             self.player_state.player_name.clone(),
             metadata.info_type,
             metadata.received,
             &read_mail.mail_string,
-            Some(self.world_map.resolve_location(&metadata.location_id)),
         )
     }
 
@@ -622,15 +622,13 @@ fn extract_market_orders(
             _ => None,
         })
         .map(|mut order: CachedOrder| {
-            if order.location_id.is_none() {
-                order.location_id = fallback_location_index.map(str::to_string);
-            }
-            if let Some(location_id) = order.location_id.as_deref() {
-                if let Some(location_name) = world_map.name_from_index(location_id) {
-                    order.location_name = Some(location_name.to_string());
-                    order.friendly_location_name = Some(location_name.to_string());
-                }
-            }
+            order.location = if order.location.is_unknown() {
+                fallback_location_index
+                    .map(|location| world_map.resolve_location(location))
+                    .unwrap_or_else(AlbionLocation::unknown)
+            } else {
+                world_map.resolve_location(&order.location.id)
+            };
             order
         })
         .collect()
@@ -776,23 +774,13 @@ mod tests {
         };
 
         assert_eq!(
-            response.market_orders[0].location_id.as_deref(),
-            Some("2000")
+            response.market_orders[0].location,
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
         );
         assert_eq!(
-            response.market_orders[1].location_id.as_deref(),
-            Some("9999")
+            response.market_orders[1].location,
+            AlbionLocation::unknown()
         );
-        assert_eq!(
-            response.market_orders[0].location_name.as_deref(),
-            Some("Bridgewatch")
-        );
-        assert_eq!(
-            response.market_orders[0].friendly_location_name.as_deref(),
-            Some("Bridgewatch")
-        );
-        assert_eq!(response.market_orders[1].location_name, None);
-        assert_eq!(response.market_orders[1].friendly_location_name, None);
     }
 
     #[test]
@@ -843,16 +831,60 @@ mod tests {
         };
 
         assert_eq!(
-            response.market_orders[0].location_id.as_deref(),
-            Some("3008")
+            response.market_orders[0].location,
+            AlbionLocation::with_names("3008", "Martlock Market", "Martlock Market")
         );
-        assert_eq!(
-            response.market_orders[0].location_name.as_deref(),
-            Some("Martlock Market")
+    }
+
+    #[test]
+    fn market_orders_unknown_non_numeric_location_becomes_unknown_location() {
+        let mut parser = PhotonParser::new("test".to_string(), false);
+        let mut params = market_order_params(14978117778);
+        params.insert(
+            0,
+            json!([
+                {
+                    "Amount": 2,
+                    "AuctionType": "offer",
+                    "BuyerCharacterId": null,
+                    "BuyerName": null,
+                    "DistanceFee": 0,
+                    "EnchantmentLevel": 0,
+                    "Expires": "2026-06-22T03:34:16.096699",
+                    "HasBuyerFetched": false,
+                    "HasSellerFetched": false,
+                    "Id": 14978117778_i64,
+                    "IsFinished": false,
+                    "ItemGroupTypeId": "T1_HIDE",
+                    "ItemTypeId": "T1_HIDE",
+                    "LocationId": "NOT-A-WORLD-INDEX",
+                    "QualityLevel": 1,
+                    "ReferenceId": "7ae09894-4883-479b-932e-ff7914c82855",
+                    "SellerCharacterId": "07b8fbc0-c512-4054-bc53-12312af94df3",
+                    "SellerName": "CoelhoMalvado",
+                    "Tier": 1,
+                    "TotalPriceSilver": 100000,
+                    "UnitPriceSilver": 50000
+                }
+            ]),
         );
+
+        let extracted = parser
+            .extract_operation(
+                "response",
+                OperationCode::AuctionGetOffers,
+                &params,
+                Some(0),
+            )
+            .unwrap();
+
+        let ExtractedPacket::AuctionGetOffersResponse(response) = extracted else {
+            panic!("expected auction get offers response");
+        };
+
         assert_eq!(
-            response.market_orders[0].friendly_location_name.as_deref(),
-            Some("Martlock Market")
+            response.market_orders[0].location,
+            AlbionLocation::unknown()
         );
     }
 
@@ -1086,7 +1118,10 @@ mod tests {
         };
 
         assert_eq!(mail.id, 42);
-        assert_eq!(mail.location_id, "2000");
+        assert_eq!(
+            mail.location,
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
+        );
         assert_eq!(mail.player_name, "PlayerOne");
         assert_eq!(
             mail.info_type,
@@ -1094,13 +1129,6 @@ mod tests {
         );
         assert_eq!(mail.auction_type, AuctionType::Offer);
         assert_eq!(mail.received, 1_717_171_717);
-        assert_eq!(
-            mail.location,
-            Some(AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            })
-        );
         assert_eq!(parser.albion_mails().get(&42), Some(&mail));
     }
 
@@ -1129,7 +1157,10 @@ mod tests {
 
         let mail = parser.albion_mails().get(&42).unwrap();
         assert_eq!(mail.id, 42);
-        assert_eq!(mail.location_id, "2000");
+        assert_eq!(
+            mail.location,
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
+        );
     }
 
     #[test]
@@ -1155,13 +1186,9 @@ mod tests {
             panic!("expected correlated albion mail");
         };
 
-        assert_eq!(mail.location_id, "2000");
         assert_eq!(
             mail.location,
-            Some(AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            })
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
         );
     }
 
@@ -1188,13 +1215,9 @@ mod tests {
             panic!("expected correlated albion mail");
         };
 
-        assert_eq!(mail.location_id, "3003");
         assert_eq!(
             mail.location,
-            Some(AlbionLocation::Known {
-                index: "3003".to_string(),
-                unique_name: "Caerleon".to_string(),
-            })
+            AlbionLocation::with_names("3003", "Caerleon", "Caerleon")
         );
     }
 

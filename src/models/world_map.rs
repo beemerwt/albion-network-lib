@@ -52,25 +52,20 @@ impl WorldMap {
     }
 
     pub fn resolve_location(&self, value: &str) -> AlbionLocation {
-        if value.eq_ignore_ascii_case("unset") {
-            return AlbionLocation::Unset;
-        }
-        if value.eq_ignore_ascii_case("unknown") {
-            return AlbionLocation::Unknown;
+        if value.trim().is_empty()
+            || value.eq_ignore_ascii_case("unset")
+            || value.eq_ignore_ascii_case("unknown")
+            || value == "-2"
+        {
+            return AlbionLocation::unknown();
         }
         if let Some(unique_name) = self.name_from_index(value) {
-            return AlbionLocation::Known {
-                index: value.to_string(),
-                unique_name: unique_name.to_string(),
-            };
+            return AlbionLocation::with_names(value, unique_name, unique_name);
         }
         if let Some(index) = self.index_from_name(value) {
-            return AlbionLocation::Known {
-                index: index.to_string(),
-                unique_name: value.to_string(),
-            };
+            return AlbionLocation::with_names(index, value, value);
         }
-        AlbionLocation::Unknown
+        AlbionLocation::unknown()
     }
 }
 
@@ -92,33 +87,30 @@ mod tests {
 
         assert_eq!(
             world_map.resolve_location("2000"),
-            AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            }
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
         );
         assert_eq!(
             world_map.resolve_location("Bridgewatch"),
-            AlbionLocation::Known {
-                index: "2000".to_string(),
-                unique_name: "Bridgewatch".to_string(),
-            }
+            AlbionLocation::with_names("2000", "Bridgewatch", "Bridgewatch")
         );
     }
 
     #[test]
-    fn location_id_only_uses_numeric_indexes() {
-        let numeric = AlbionLocation::Known {
-            index: "3008".to_string(),
-            unique_name: "Bridgewatch".to_string(),
-        };
-        let non_numeric = AlbionLocation::Known {
-            index: "BLACKBANK-2310".to_string(),
-            unique_name: "Test".to_string(),
-        };
+    fn resolves_non_numeric_indexes_and_unknowns() {
+        let world_map = WorldMap::from_embedded().unwrap();
 
-        assert_eq!(numeric.location_id(), Some(3008));
-        assert_eq!(non_numeric.location_id(), None);
-        assert_eq!(AlbionLocation::Unknown.location_id(), None);
+        assert_eq!(
+            world_map.resolve_location("ISLAND-GUILD-0001a"),
+            AlbionLocation::with_names(
+                "ISLAND-GUILD-0001a",
+                "ISLAND-GUILD-0001a_ISL_DL_T1_NON",
+                "ISLAND-GUILD-0001a_ISL_DL_T1_NON",
+            )
+        );
+        assert_eq!(
+            world_map.resolve_location("UNKNOWN-NON-NUMERIC"),
+            AlbionLocation::unknown()
+        );
+        assert_eq!(world_map.resolve_location("").id, "-2");
     }
 }
