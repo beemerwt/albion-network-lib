@@ -2,7 +2,7 @@ use crate::{
     error::Result,
     util::{bytes_value, hex_lower, hex_upper, json_key, params_to_json},
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 
 struct Reader<'a> {

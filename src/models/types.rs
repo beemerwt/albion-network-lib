@@ -52,11 +52,20 @@ pub enum OperationType {
 }
 
 impl OperationType {
-    pub fn from_auction_type(auction_type: &AuctionType) -> Self {
-        match auction_type {
-            AuctionType::Offer => Self::Buy,
-            AuctionType::Request => Self::Sell,
-            AuctionType::Unknown(value) => Self::Unknown(value.clone()),
+    // TODO: Offer and Request are reversed when is_instant
+    pub fn from_auction_type(auction_type: &AuctionType, trade_type: &TradeType) -> Self {
+        match trade_type {
+            TradeType::Instant => match auction_type {
+                AuctionType::Offer => Self::Buy,
+                AuctionType::Request => Self::Sell,
+                AuctionType::Unknown(value) => Self::Unknown(value.clone()),
+            },
+            TradeType::Order => match auction_type {
+                AuctionType::Offer => Self::Sell,
+                AuctionType::Request => Self::Buy,
+                AuctionType::Unknown(value) => Self::Unknown(value.clone()),
+            },
+            TradeType::Unknown(value) => Self::Unknown(value.clone()),
         }
     }
 
@@ -222,15 +231,26 @@ mod tests {
     #[test]
     fn operation_type_correlates_to_auction_type() {
         assert_eq!(
-            OperationType::from_auction_type(&AuctionType::Offer),
+            OperationType::from_auction_type(&AuctionType::Offer, &TradeType::Instant),
             OperationType::Buy
         );
         assert_eq!(
-            OperationType::from_auction_type(&AuctionType::Request),
+            OperationType::from_auction_type(&AuctionType::Request, &TradeType::Instant),
             OperationType::Sell
         );
         assert_eq!(
-            OperationType::from_auction_type(&AuctionType::Unknown("weird".to_string())),
+            OperationType::from_auction_type(&AuctionType::Offer, &TradeType::Order),
+            OperationType::Sell
+        );
+        assert_eq!(
+            OperationType::from_auction_type(&AuctionType::Request, &TradeType::Order),
+            OperationType::Buy
+        );
+        assert_eq!(
+            OperationType::from_auction_type(
+                &AuctionType::Unknown("weird".to_string()),
+                &TradeType::Unknown("weird".to_string())
+            ),
             OperationType::Unknown("weird".to_string())
         );
     }

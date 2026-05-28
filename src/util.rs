@@ -1,5 +1,5 @@
 use crate::error::Result;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub fn params_to_json(params: &BTreeMap<u8, Value>) -> BTreeMap<String, Value> {

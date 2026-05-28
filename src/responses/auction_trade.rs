@@ -8,7 +8,7 @@ pub struct AuctionTrade {
     pub operation: OperationType,
     pub trade_type: TradeType,
     pub order: Option<CachedOrder>,
-    pub order_id: Option<i64>,
+    pub id: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

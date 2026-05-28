@@ -1,4 +1,4 @@
-use crate::models::{AlbionLocation, AuctionType, MailInfoType};
+use crate::models::{AlbionLocation, AuctionType, MailInfoType, TradeType};
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -8,6 +8,7 @@ pub struct AlbionMail {
     pub player_name: String,
     pub info_type: MailInfoType,
     pub auction_type: AuctionType,
+    pub trade_type: TradeType,
     pub received: i64,
     pub server_id: i32,
     pub partial_amount: i32,
@@ -19,7 +20,7 @@ pub struct AlbionMail {
     pub total_taxes: i64,
     pub is_set: bool,
     pub deleted: bool,
-    pub item_name: String,
+    pub item_name: Option<String>,
 }
 
 impl AlbionMail {
@@ -37,6 +38,7 @@ impl AlbionMail {
             player_name,
             info_type,
             auction_type: info_type.auction_type(),
+            trade_type: TradeType::Order,
             received,
             server_id: 0,
             partial_amount: 0,
@@ -48,7 +50,7 @@ impl AlbionMail {
             total_taxes: 0,
             is_set: false,
             deleted: false,
-            item_name: String::new(),
+            item_name: None,
         };
         mail.set_data(mail_string);
         mail

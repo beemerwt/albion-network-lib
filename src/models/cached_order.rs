@@ -17,7 +17,8 @@ pub struct CachedOrder {
     pub id: i64,
     pub is_finished: bool,
     pub item_group_type_id: String,
-    pub item_type_id: String,
+    pub item_id: String,
+    pub item_name: Option<String>,
     pub location: AlbionLocation,
     pub quality_level: i64,
     pub reference_id: String,
@@ -73,7 +74,8 @@ impl<'de> Deserialize<'de> for CachedOrder {
             id: raw.id,
             is_finished: raw.is_finished,
             item_group_type_id: raw.item_group_type_id,
-            item_type_id: raw.item_type_id,
+            item_id: raw.item_type_id,
+            item_name: None,
             location: location_from_value(raw.location_id),
             quality_level: raw.quality_level,
             reference_id: raw.reference_id,
@@ -176,6 +178,7 @@ mod tests {
             order.auction_type,
             AuctionType::Unknown("custom".to_string())
         );
+        assert_eq!(order.item_name, None);
     }
 
     #[test]
