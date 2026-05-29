@@ -192,7 +192,7 @@ pub enum OperationCode {
     RequestGuildFinderNameSearch = 186,
     RequestGuildFinderRecommendedList = 187,
     RegisterChatPeer = 188,
-    SendChatMessage = 189,
+    SendChatMessage = 189, // For when the local user sends a message to chat, might be more specific to different channels
     SendModeratorMessage = 190,
     JoinChatChannel = 191,
     LeaveChatChannel = 192,

@@ -1,6 +1,7 @@
 mod albion_location;
 mod albion_mail;
 mod cached_order;
+mod chat_channel;
 mod guid;
 mod player_state;
 mod types;
@@ -13,5 +14,6 @@ pub(crate) use world_map::WorldMap;
 
 // All public types for external use
 pub use albion_mail::AlbionMail;
+pub use chat_channel::ChatChannel;
 pub use guid::Guid;
 pub use types::{AuctionType, MailInfoMetadata, MailInfoType, OperationType, TradeType};

@@ -3,8 +3,8 @@ use crate::{
     event_codes::EventCode,
     extracted_packet::{ExtractedPacket, MarketPlaceNotification},
     models::{
-        AlbionLocation, AlbionMail, CachedOrder, MailInfoMetadata, OperationType, PlayerState,
-        TradeType, WorldMap,
+        AlbionLocation, AlbionMail, CachedOrder, ChatChannel, MailInfoMetadata, OperationType,
+        PlayerState, TradeType, WorldMap,
     },
     names,
     operation_codes::OperationCode,
@@ -17,7 +17,7 @@ use crate::{
     },
     responses::{
         AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTrade, AuctionTradeResponse,
-        GetMailInfos, JoinResponse, ReadMail,
+        ChatMessage, GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel, ReadMail,
     },
     util::{params_to_json, read_i32_be, to_signed_short, value_i64},
 };
@@ -58,6 +58,7 @@ pub struct PhotonParser {
     read_mails_by_id: HashMap<i64, ReadMail>,
     albion_mails_by_id: HashMap<i64, AlbionMail>,
     item_names_by_id: HashMap<String, String>,
+    chat_channels_by_id: HashMap<i64, ChatChannel>,
     player_state: PlayerState,
 }
 
@@ -92,6 +93,7 @@ impl PhotonParser {
             read_mails_by_id: HashMap::new(),
             albion_mails_by_id: HashMap::new(),
             item_names_by_id,
+            chat_channels_by_id: HashMap::new(),
             player_state: PlayerState::new(world_map),
         }
     }
@@ -686,18 +688,43 @@ impl PhotonParser {
     }
 
     fn extract_event(
-        &self,
+        &mut self,
         event_code: EventCode,
         parameters: &BTreeMap<u8, Value>,
     ) -> Option<ExtractedPacket> {
-        if event_code == EventCode::MarketPlaceNotification {
-            return Some(ExtractedPacket::MarketPlaceNotification(
+        match event_code {
+            EventCode::MarketPlaceNotification => Some(ExtractedPacket::MarketPlaceNotification(
                 MarketPlaceNotification {
                     notification: parameters.get(&0).cloned().unwrap_or(Value::Null),
                 },
-            ));
+            )),
+            EventCode::ChatMessage => {
+                let channel_type = parameters
+                    .get(&0)
+                    .and_then(value_i64)
+                    .and_then(|channel_id| self.chat_channels_by_id.get(&channel_id).copied());
+                Some(ExtractedPacket::ChatMessage(
+                    ChatMessage::from_params_with_channel_type(parameters, channel_type),
+                ))
+            }
+            EventCode::ChatSay => Some(ExtractedPacket::ChatMessage(ChatMessage::from_say_params(
+                parameters,
+            ))),
+            EventCode::JoinedChatChannel => {
+                let response = JoinedChatChannel::from_params(parameters);
+                self.chat_channels_by_id.insert(
+                    response.channel_id,
+                    ChatChannel::from_chat_index(i64::from(response.chat_index)),
+                );
+                Some(ExtractedPacket::JoinedChatChannel(response))
+            }
+            EventCode::LeftChatChannel => {
+                let response = LeftChatChannel::from_params(parameters);
+                self.chat_channels_by_id.remove(&response.channel_id);
+                Some(ExtractedPacket::LeftChatChannel(response))
+            }
+            _ => None,
         }
-        None
     }
 }
 
@@ -1372,7 +1399,7 @@ mod tests {
 
     #[test]
     fn marketplace_notification_returns_typed_packet() {
-        let parser = parser();
+        let mut parser = parser();
         let mut params = BTreeMap::new();
         params.insert(0, json!({"message": "sold"}));
 
@@ -1385,6 +1412,105 @@ mod tests {
         };
 
         assert_eq!(notification.notification, json!({"message": "sold"}));
+    }
+
+    #[test]
+    fn joined_chat_channel_returns_typed_packet() {
+        let mut parser = parser();
+        let mut params = BTreeMap::new();
+        params.insert(0, json!(3));
+        params.insert(1, json!("9001"));
+
+        let extracted = parser
+            .extract_event(EventCode::JoinedChatChannel, &params)
+            .unwrap();
+
+        let ExtractedPacket::JoinedChatChannel(response) = extracted else {
+            panic!("expected joined chat channel");
+        };
+
+        assert_eq!(response.chat_index, 3);
+        assert_eq!(response.channel_id, 9001);
+    }
+
+    #[test]
+    fn left_chat_channel_returns_typed_packet() {
+        let mut parser = parser();
+        let mut params = BTreeMap::new();
+        params.insert(0, json!("1856"));
+
+        let extracted = parser
+            .extract_event(EventCode::LeftChatChannel, &params)
+            .unwrap();
+
+        let ExtractedPacket::LeftChatChannel(response) = extracted else {
+            panic!("expected left chat channel");
+        };
+
+        assert_eq!(response.channel_id, 1856);
+    }
+
+    #[test]
+    fn joined_chat_channel_state_classifies_chat_messages() {
+        let mut parser = parser();
+        let mut join_params = BTreeMap::new();
+        join_params.insert(0, json!(29));
+        join_params.insert(1, json!(9001));
+
+        parser
+            .extract_event(EventCode::JoinedChatChannel, &join_params)
+            .unwrap();
+
+        let mut message_params = BTreeMap::new();
+        message_params.insert(0, json!(9001));
+        message_params.insert(1, json!("Player"));
+        message_params.insert(2, json!("For the faction"));
+
+        let extracted = parser
+            .extract_event(EventCode::ChatMessage, &message_params)
+            .unwrap();
+
+        let ExtractedPacket::ChatMessage(message) = extracted else {
+            panic!("expected chat message");
+        };
+
+        assert_eq!(message.channel_id, 9001);
+        assert_eq!(message.channel_type, ChatChannel::Faction);
+    }
+
+    #[test]
+    fn left_chat_channel_state_removes_chat_message_classification() {
+        let mut parser = parser();
+        let mut join_params = BTreeMap::new();
+        join_params.insert(0, json!(29));
+        join_params.insert(1, json!(9001));
+
+        parser
+            .extract_event(EventCode::JoinedChatChannel, &join_params)
+            .unwrap();
+
+        let mut left_params = BTreeMap::new();
+        left_params.insert(0, json!(9001));
+
+        parser
+            .extract_event(EventCode::LeftChatChannel, &left_params)
+            .unwrap();
+
+        let mut message_params = BTreeMap::new();
+        message_params.insert(0, json!(9001));
+        message_params.insert(1, json!("Player"));
+        message_params.insert(2, json!("No tracked channel"));
+
+        let extracted = parser
+            .extract_event(EventCode::ChatMessage, &message_params)
+            .unwrap();
+
+        let ExtractedPacket::ChatMessage(message) = extracted else {
+            panic!("expected chat message");
+        };
+
+        assert_eq!(message.channel_id, 9001);
+        assert_eq!(message.channel_type, ChatChannel::Say);
     }
 
     #[test]

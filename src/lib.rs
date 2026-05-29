@@ -21,5 +21,5 @@ pub use extracted_packet::{ExtractedPacket, MarketPlaceNotification};
 pub use hosts::HostFilter;
 pub use operation_codes::OperationCode;
 pub use packet::{DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown};
-pub use pcap::{extract_udp_payload, iter_pcapng_packets, Endpoint, UdpPacket};
+pub use pcap::{Endpoint, UdpPacket, extract_udp_payload, iter_pcapng_packets};
 pub use photon::PhotonParser;
