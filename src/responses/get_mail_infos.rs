@@ -1,4 +1,4 @@
-use crate::{models::MailInfoType, util::value_i64};
+use crate::{models::MailInfoType, util::{dotnet_ticks_to_unix_millis, value_i64}};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -12,7 +12,7 @@ pub struct GetMailInfos {
 }
 
 impl GetMailInfos {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
+    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {        
         Self {
             mail_ids: i64_array(parameters.get(&3)),
             location_ids: string_array(parameters.get(&7)),
@@ -27,7 +27,10 @@ impl GetMailInfos {
                         .collect()
                 })
                 .unwrap_or_default(),
-            received: i64_array(parameters.get(&12)),
+            received: i64_array(parameters.get(&12))
+                .into_iter()
+                .map(dotnet_ticks_to_unix_millis)
+                .collect(),
         }
     }
 }

@@ -21,6 +21,7 @@ use crate::{
     },
     util::{params_to_json, read_i32_be, to_signed_short, value_i64},
 };
+use chrono::Utc;
 use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -531,6 +532,7 @@ impl PhotonParser {
                         cached_order.as_ref(),
                         &TradeType::Instant,
                     ),
+                    timestamp: Utc::now().timestamp_millis(),
                     trade_type: TradeType::Instant,
                     order: cached_order,
                     id,
@@ -554,6 +556,7 @@ impl PhotonParser {
                         cached_order.as_ref(),
                         &TradeType::Instant,
                     ),
+                    timestamp: Utc::now().timestamp_millis(),
                     trade_type: TradeType::Instant,
                     order: cached_order,
                     id,

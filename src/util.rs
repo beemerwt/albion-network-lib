@@ -2,6 +2,9 @@ use crate::error::Result;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
+const DOTNET_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
+const TICKS_PER_MILLISECOND: i64 = 10_000;
+
 pub fn params_to_json(params: &BTreeMap<u8, Value>) -> BTreeMap<String, Value> {
     params
         .iter()
@@ -84,4 +87,8 @@ pub fn hex_upper(bytes: &[u8]) -> String {
         .map(|byte| format!("{byte:02X}"))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+pub fn dotnet_ticks_to_unix_millis(ticks: i64) -> i64 {
+    (ticks - DOTNET_EPOCH_TICKS) / TICKS_PER_MILLISECOND
 }

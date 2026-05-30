@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -34,7 +34,7 @@ impl ChatMessage {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let timestamp = Local::now().timestamp_millis();
+        let timestamp = Utc::now().timestamp_millis();
         Self {
             channel_id,
             channel_type: channel_type.unwrap_or_else(|| ChatChannel::from_i64(channel_id)),
@@ -55,7 +55,7 @@ impl ChatMessage {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let timestamp = Local::now().timestamp_millis();
+        let timestamp = Utc::now().timestamp_millis();
         Self {
             channel_id: 0,
             channel_type: ChatChannel::Say,
