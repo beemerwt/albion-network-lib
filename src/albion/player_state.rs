@@ -1,4 +1,4 @@
-use crate::models::{AlbionLocation, WorldMap};
+use crate::albion::{AlbionLocation, WorldMap};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
