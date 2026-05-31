@@ -2,16 +2,14 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    albion::{ EventCode, ExtractedPacket, OperationCode },
-    packet::{
-        PacketMetadata,
-        SerializableParameters
-    },
+    albion::{EventCode, ExtractedPacket, OperationCode},
+    packet::{OperationPacketKind, PacketMetadata, SerializableParameters},
 };
 
 #[derive(Clone, Serialize)]
 pub struct DecodedOperation {
     pub metadata: PacketMetadata,
+    pub kind: OperationPacketKind,
     pub file: String,
     pub message_type: String,
     pub code: OperationCode,

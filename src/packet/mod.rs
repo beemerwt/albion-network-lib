@@ -1,21 +1,12 @@
-
+mod decoded;
+mod kind;
 mod metadata;
 mod parameters;
-mod decoded;
 
-pub use metadata::{
-    PacketDirection,
-    PacketMetadata,
-};
+pub use metadata::{PacketDirection, PacketMetadata};
 
-pub use decoded::{
-    DecodedPacket,
-    DecodedOperation,
-    DecodedEvent,
-    DecodedUnknown,
-};
+pub use decoded::{DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown};
 
-pub use parameters::{
-    RawParameters,
-    SerializableParameters,
-};
+pub use parameters::{RawParameters, SerializableParameters};
+
+pub use kind::{OperationPacketKind, UnknownPacketKind};

@@ -1,9 +1,7 @@
-use crate::albion::{
-    CachedOrder,
-    OperationType,
-    TradeType,
+use crate::albion::payloads::{
+    AuctionBuyOffer, AuctionSellSpecificItem, AuctionTrade, AuctionTradeResponse,
 };
-use crate::albion::payloads::AuctionTrade;
+use crate::albion::{CachedOrder, OperationType, TradeType};
 use chrono::Utc;
 use std::collections::HashMap;
 
@@ -22,12 +20,13 @@ impl MarketState {
         self.orders_by_id.len()
     }
 
-    pub fn cache_orders<I>(&mut self, orders: I)
-    where
-        I: IntoIterator<Item = CachedOrder>,
-    {
+    pub fn cache_order(&mut self, order: CachedOrder) {
+        self.orders_by_id.insert(order.id, order);
+    }
+
+    pub fn cache_orders_from_slice(&mut self, orders: &[CachedOrder]) {
         for order in orders {
-            self.orders_by_id.insert(order.id, order);
+            self.cache_order(order.clone());
         }
     }
 
@@ -39,25 +38,62 @@ impl MarketState {
         self.orders_by_id.get(&order_id).cloned()
     }
 
-    pub fn begin_instant_trade(
+    pub fn begin_buy_order_request(
         &mut self,
         order_id: Option<i64>,
         amount: Option<i64>,
-        trade_type: TradeType,
-    ) {
-        self.unconfirmed_trade = order_id.map(|id| {
-            let cached_order = self.get_order_cloned(id);
+    ) -> AuctionBuyOffer {
+        let cached_order = self.begin_instant_trade(order_id, amount);
+        AuctionBuyOffer {
+            amount,
+            cached_order,
+            order_id,
+        }
+    }
 
-            AuctionTrade {
-                id,
-                amount,
-                silver_amount: silver_amount(amount, cached_order.as_ref()),
-                operation: operation_from_cached_order(cached_order.as_ref(), &trade_type),
-                timestamp: Utc::now().timestamp_millis(),
-                trade_type,
-                order: cached_order,
-            }
+    pub fn begin_sell_specific_item_request(
+        &mut self,
+        order_id: Option<i64>,
+        amount: Option<i64>,
+    ) -> AuctionSellSpecificItem {
+        let cached_order = self.begin_instant_trade(order_id, amount);
+        AuctionSellSpecificItem {
+            amount,
+            cached_order,
+            order_id,
+        }
+    }
+
+    fn begin_instant_trade(
+        &mut self,
+        order_id: Option<i64>,
+        amount: Option<i64>,
+    ) -> Option<CachedOrder> {
+        let cached_order = order_id.and_then(|id| self.get_order_cloned(id));
+
+        self.unconfirmed_trade = order_id.map(|id| AuctionTrade {
+            id,
+            amount,
+            silver_amount: silver_amount(amount, cached_order.as_ref()),
+            operation: operation_from_cached_order(cached_order.as_ref(), &TradeType::Instant),
+            timestamp: Utc::now().timestamp_millis(),
+            trade_type: TradeType::Instant,
+            order: cached_order.clone(),
         });
+
+        cached_order
+    }
+
+    pub fn finish_instant_trade_response(
+        &mut self,
+        return_code: Option<i16>,
+    ) -> AuctionTradeResponse {
+        let success = return_code == Some(0);
+
+        AuctionTradeResponse {
+            confirmed_trade: success.then(|| self.unconfirmed_trade.take()).flatten(),
+            success,
+        }
     }
 
     pub fn take_unconfirmed_trade(&mut self) -> Option<AuctionTrade> {

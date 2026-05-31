@@ -1,6 +1,6 @@
-use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
+use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuctionType {
@@ -344,7 +344,6 @@ impl Serialize for Guid {
         serializer.serialize_str(&guid_string)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

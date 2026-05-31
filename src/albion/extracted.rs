@@ -1,13 +1,10 @@
 use crate::albion::{
     AlbionMail,
     payloads::{
-        AuctionBuyOffer,
-        AuctionGetOffers, AuctionGetOffersResult,
-        AuctionGetRequests, AuctionGetRequestsResult,
-        AuctionSellSpecificItem,
-        AuctionTradeResponse, ChatMessage,
-        GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel,
-    }
+        AuctionBuyOffer, AuctionGetOffers, AuctionGetOffersResult, AuctionGetRequests,
+        AuctionGetRequestsResult, AuctionSellSpecificItem, AuctionTradeResponse, ChatMessage,
+        GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel, MarketPlaceNotification,
+    },
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -39,9 +36,4 @@ impl ExtractedPacket {
     pub fn into_json(self) -> Value {
         serde_json::to_value(self).unwrap()
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct MarketPlaceNotification {
-    pub notification: Value,
 }

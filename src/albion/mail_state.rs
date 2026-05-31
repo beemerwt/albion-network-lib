@@ -1,8 +1,5 @@
 use crate::albion::{
-    AlbionMail,
-    ItemNameResolver,
-    MailInfoMetadata,
-    WorldMap,
+    AlbionMail, ItemNameResolver, MailInfoMetadata, WorldMap,
     payloads::{GetMailInfos, ReadMail},
 };
 use std::collections::HashMap;
@@ -62,13 +59,8 @@ impl MailState {
                 .insert(metadata.mail_id, metadata.clone());
 
             if let Some(read_mail) = self.read_mails_by_id.get(&metadata.mail_id).cloned() {
-                let mail = build_albion_mail(
-                    &metadata,
-                    &read_mail,
-                    world_map,
-                    item_names,
-                    player_name,
-                );
+                let mail =
+                    build_albion_mail(&metadata, &read_mail, world_map, item_names, player_name);
 
                 self.albion_mails_by_id.insert(mail.id, mail);
             }
@@ -86,15 +78,7 @@ impl MailState {
             .insert(response.mail_id, response.clone());
 
         let metadata = self.mail_infos_by_id.get(&response.mail_id)?.clone();
-
-        let mail = build_albion_mail(
-            &metadata,
-            &response,
-            world_map,
-            item_names,
-            player_name,
-        );
-
+        let mail = build_albion_mail(&metadata, &response, world_map, item_names, player_name);
         self.albion_mails_by_id.insert(mail.id, mail.clone());
 
         Some(mail)

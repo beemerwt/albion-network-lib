@@ -1,7 +1,5 @@
-use crate::util::value_i64;
+use crate::{packet::RawParameters, util::value_i64};
 use serde::Serialize;
-use serde_json::Value;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct JoinedChatChannel {
@@ -10,27 +8,28 @@ pub struct JoinedChatChannel {
 }
 
 impl JoinedChatChannel {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
+    pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
             chat_index: parameters
-                .get(&0)
+                .get(0)
                 .and_then(value_i64)
                 .and_then(|value| u8::try_from(value).ok())
                 .unwrap_or_default(),
-            channel_id: parameters.get(&1).and_then(value_i64).unwrap_or_default(),
+            channel_id: parameters.get(1).and_then(value_i64).unwrap_or_default(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::packet::RawParameters;
+
     use super::JoinedChatChannel;
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn parses_full_joined_chat_channel_response() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(0, json!("2"));
         params.insert(1, json!(42));
 
@@ -42,7 +41,7 @@ mod tests {
 
     #[test]
     fn missing_or_malformed_params_use_defaults() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(0, json!(300));
         params.insert(1, json!({"unexpected": true}));
 

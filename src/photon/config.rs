@@ -1,5 +1,4 @@
-use crate::albion::{ WorldMap, ItemNameResolver };
-
+use crate::albion::{ItemNameResolver, WorldMap};
 
 pub struct PhotonParserConfig {
     pub source_name: String,

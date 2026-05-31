@@ -1,12 +1,11 @@
 // photon/mod.rs
-pub use parser::PhotonParser;
 pub use config::PhotonParserConfig;
+pub use parser::PhotonParser;
 
-mod parser;
 mod command;
+mod config;
+mod direction;
 mod fragment;
 mod message;
+mod parser;
 mod recorder;
-mod code_parser;
-mod direction;
-mod config;

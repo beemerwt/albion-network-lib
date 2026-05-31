@@ -1,7 +1,6 @@
-use crate::util::value_i64;
+use crate::{packet::RawParameters, util::value_i64};
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReadMail {
@@ -10,11 +9,11 @@ pub struct ReadMail {
 }
 
 impl ReadMail {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
+    pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            mail_id: parameters.get(&0).and_then(value_i64).unwrap_or_default(),
+            mail_id: parameters.get(0).and_then(value_i64).unwrap_or_default(),
             mail_string: parameters
-                .get(&1)
+                .get(1)
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
@@ -24,13 +23,15 @@ impl ReadMail {
 
 #[cfg(test)]
 mod tests {
+    use crate::packet::RawParameters;
+
     use super::ReadMail;
     use serde_json::json;
     use std::collections::BTreeMap;
 
     #[test]
     fn parses_full_read_mail_response() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(0, json!("42"));
         params.insert(1, json!("mail body"));
 
@@ -42,7 +43,7 @@ mod tests {
 
     #[test]
     fn missing_params_use_defaults() {
-        let response = ReadMail::from_params(&BTreeMap::new());
+        let response = ReadMail::from_params(&RawParameters::empty());
 
         assert_eq!(response.mail_id, 0);
         assert_eq!(response.mail_string, "");
@@ -50,7 +51,7 @@ mod tests {
 
     #[test]
     fn malformed_params_use_defaults() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(0, json!({"unexpected": true}));
         params.insert(1, json!(123));
 

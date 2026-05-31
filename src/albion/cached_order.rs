@@ -1,4 +1,4 @@
-use crate::albion::{ AuctionType, world::AlbionLocation };
+use crate::albion::{AuctionType, world::AlbionLocation};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
@@ -243,6 +243,9 @@ mod tests {
 
         let order: CachedOrder = serde_json::from_value(value).unwrap();
 
-        assert_eq!(order.location, crate::albion::world::AlbionLocation::unknown());
+        assert_eq!(
+            order.location,
+            crate::albion::world::AlbionLocation::unknown()
+        );
     }
 }

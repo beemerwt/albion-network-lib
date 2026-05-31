@@ -1,4 +1,8 @@
-use crate::{ albion::MailInfoType, util::{dotnet_ticks_to_unix_millis, value_i64} };
+use crate::{
+    albion::MailInfoType,
+    packet::RawParameters,
+    util::{dotnet_ticks_to_unix_millis, value_i64},
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -12,12 +16,12 @@ pub struct GetMailInfos {
 }
 
 impl GetMailInfos {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {        
+    pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            mail_ids: i64_array(parameters.get(&3)),
-            location_ids: string_array(parameters.get(&7)),
+            mail_ids: i64_array(parameters.get(3)),
+            location_ids: string_array(parameters.get(7)),
             types: parameters
-                .get(&11)
+                .get(11)
                 .and_then(Value::as_array)
                 .map(|values| {
                     values
@@ -27,7 +31,7 @@ impl GetMailInfos {
                         .collect()
                 })
                 .unwrap_or_default(),
-            received: i64_array(parameters.get(&12))
+            received: i64_array(parameters.get(12))
                 .into_iter()
                 .map(dotnet_ticks_to_unix_millis)
                 .collect(),
@@ -58,13 +62,12 @@ fn string_array(value: Option<&Value>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::GetMailInfos;
-    use crate::albion::MailInfoType;
+    use crate::{albion::MailInfoType, packet::RawParameters};
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn parses_full_get_mail_infos_response() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(3, json!([101, "102", true, {"ignored": true}]));
         params.insert(7, json!(["2000", "BLACKBANK-2310"]));
         params.insert(
@@ -97,7 +100,7 @@ mod tests {
 
     #[test]
     fn missing_or_malformed_params_default_to_empty_vectors() {
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         params.insert(3, json!({"unexpected": true}));
         params.insert(7, json!(null));
         params.insert(11, json!("unexpected"));

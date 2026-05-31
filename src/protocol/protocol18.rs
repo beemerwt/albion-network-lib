@@ -1,10 +1,10 @@
 use crate::{
     error::Result,
+    packet::RawParameters,
     protocol::Reader,
-    util::{bytes_value, hex_lower, hex_upper, json_key, params_to_json},
+    util::{bytes_value, hex_lower, json_key},
 };
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
 
 pub struct Protocol18Deserializer;
 
@@ -12,7 +12,7 @@ impl Protocol18Deserializer {
     pub fn deserialize_operation_request(
         &self,
         payload: &[u8],
-    ) -> Result<(u8, BTreeMap<u8, Value>)> {
+    ) -> Result<(u8, RawParameters)> {
         let mut reader = Reader::new(payload);
         let operation_code = reader.read_u8()?;
         Ok((
@@ -24,7 +24,7 @@ impl Protocol18Deserializer {
     pub fn deserialize_operation_response(
         &self,
         payload: &[u8],
-    ) -> Result<(u8, i16, String, BTreeMap<u8, Value>)> {
+    ) -> Result<(u8, i16, String, RawParameters)> {
         let mut reader = Reader::new(payload);
         let operation_code = reader.read_u8()?;
         let return_code = reader.read_i16_le()?;
@@ -43,7 +43,7 @@ impl Protocol18Deserializer {
         ))
     }
 
-    pub fn deserialize_event_data(&self, payload: &[u8]) -> Result<(u8, BTreeMap<u8, Value>)> {
+    pub fn deserialize_event_data(&self, payload: &[u8]) -> Result<(u8, RawParameters)> {
         let mut reader = Reader::new(payload);
         let event_code = reader.read_u8()?;
         Ok((event_code, self.deserialize_parameter_table(&mut reader)?))
@@ -84,17 +84,17 @@ impl Protocol18Deserializer {
             24 => {
                 let payload = reader.read_bytes(reader.remaining())?;
                 let (code, params) = self.deserialize_operation_request(payload)?;
-                Ok(json!([code, params_to_json(&params)]))
+                Ok(json!([code, params.to_serializable()]))
             }
             25 => {
                 let payload = reader.read_bytes(reader.remaining())?;
                 let (code, rc, msg, params) = self.deserialize_operation_response(payload)?;
-                Ok(json!([code, rc, msg, params_to_json(&params)]))
+                Ok(json!([code, rc, msg, params.to_serializable()]))
             }
             26 => {
                 let payload = reader.read_bytes(reader.remaining())?;
                 let (code, params) = self.deserialize_event_data(payload)?;
-                Ok(json!([code, params_to_json(&params)]))
+                Ok(json!([code, params.to_serializable()]))
             }
             27 => Ok(Value::Bool(false)),
             28 => Ok(Value::Bool(true)),
@@ -124,9 +124,9 @@ impl Protocol18Deserializer {
         }
     }
 
-    fn deserialize_parameter_table(&self, reader: &mut Reader<'_>) -> Result<BTreeMap<u8, Value>> {
+    fn deserialize_parameter_table(&self, reader: &mut Reader<'_>) -> Result<RawParameters> {
         let size = reader.read_u8()?;
-        let mut params = BTreeMap::new();
+        let mut params = RawParameters::empty();
         for index in 0..size {
             let start = reader.pos;
             let key = reader.read_u8()?;

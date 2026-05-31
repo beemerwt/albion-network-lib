@@ -1,4 +1,4 @@
-use std::{ net::IpAddr, fmt };
+use std::{fmt, net::IpAddr};
 
 use serde::Serialize;
 
@@ -7,7 +7,6 @@ pub struct Endpoint {
     pub ip: IpAddr,
     pub port: u16,
 }
-
 
 impl Endpoint {
     pub fn is_albion_port(&self) -> bool {

@@ -70,7 +70,6 @@ impl AlbionLocation {
     }
 }
 
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct WorldEntry {

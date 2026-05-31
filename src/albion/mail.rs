@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::albion::AlbionLocation;
-use crate::albion::{ AuctionType, TradeType, MailInfoType };
+use crate::albion::{AuctionType, MailInfoType, TradeType};
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AlbionMail {
@@ -163,7 +163,7 @@ fn normalize_unit_silver(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::AlbionMail;
-    use crate::albion::{ AlbionLocation, AuctionType, MailInfoType };
+    use crate::albion::{AlbionLocation, AuctionType, MailInfoType};
 
     #[test]
     fn builds_first_pass_mail_from_correlated_parts() {

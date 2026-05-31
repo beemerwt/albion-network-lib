@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use crate::{albion::ChatChannel, util::value_i64};
+use crate::{albion::ChatChannel, packet::RawParameters, util::value_i64};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ChatMessage {
@@ -15,22 +15,22 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    pub fn from_params(parameters: &BTreeMap<u8, Value>) -> Self {
+    pub fn from_params(parameters: &RawParameters) -> Self {
         Self::from_params_with_channel_type(parameters, None)
     }
 
     pub fn from_params_with_channel_type(
-        parameters: &BTreeMap<u8, Value>,
+        parameters: &RawParameters,
         channel_type: Option<ChatChannel>,
     ) -> Self {
-        let channel_id = parameters.get(&0).and_then(value_i64).unwrap_or_default();
+        let channel_id = parameters.get(0).and_then(value_i64).unwrap_or_default();
         let player_name = parameters
-            .get(&1)
+            .get(1)
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
         let message = parameters
-            .get(&2)
+            .get(2)
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
@@ -44,14 +44,14 @@ impl ChatMessage {
         }
     }
 
-    pub fn from_say_params(parameters: &BTreeMap<u8, Value>) -> Self {
+    pub fn from_say_params(parameters: &RawParameters) -> Self {
         let player_name = parameters
-            .get(&0)
+            .get(0)
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
         let message = parameters
-            .get(&1)
+            .get(1)
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();

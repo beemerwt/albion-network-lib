@@ -1,7 +1,7 @@
 use crate::{
+    Endpoint,
     error::Result,
     util::{read_u16, read_u32},
-    Endpoint
 };
 use std::{
     collections::HashMap,

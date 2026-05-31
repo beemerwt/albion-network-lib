@@ -1,4 +1,3 @@
-
 use crate::{error::Result, util::hex_upper};
 
 pub(crate) struct Reader<'a> {
