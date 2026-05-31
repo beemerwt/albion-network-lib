@@ -1,4 +1,4 @@
-use crate::{models::MailInfoType, util::{dotnet_ticks_to_unix_millis, value_i64}};
+use crate::{ albion::MailInfoType, util::{dotnet_ticks_to_unix_millis, value_i64} };
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -58,7 +58,7 @@ fn string_array(value: Option<&Value>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::GetMailInfos;
-    use crate::models::MailInfoType;
+    use crate::albion::MailInfoType;
     use serde_json::json;
     use std::collections::BTreeMap;
 

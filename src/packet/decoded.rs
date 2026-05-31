@@ -1,12 +1,13 @@
-
-use crate::{
-    event_codes::EventCode, extracted_packet::ExtractedPacket, operation_codes::OperationCode,
-};
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::BTreeMap;
-use crate::metadata::PacketMetadata;
-use crate::parameters::SerializableParameters;
+
+use crate::{
+    albion::{ EventCode, ExtractedPacket, OperationCode },
+    packet::{
+        PacketMetadata,
+        SerializableParameters
+    },
+};
 
 #[derive(Clone, Serialize)]
 pub struct DecodedOperation {

@@ -1,4 +1,4 @@
-use crate::models::Guid;
+use crate::albion::Guid;
 use crate::util::value_i64;
 use serde::Serialize;
 use serde_json::Value;
@@ -35,7 +35,7 @@ impl JoinResponse {
 #[cfg(test)]
 mod tests {
     use super::JoinResponse;
-    use crate::models::Guid;
+    use crate::albion::Guid;
     use serde_json::json;
     use std::collections::BTreeMap;
 

@@ -3,8 +3,8 @@ use crate::albion::{
     ItemNameResolver,
     MailInfoMetadata,
     WorldMap,
+    payloads::{GetMailInfos, ReadMail},
 };
-use crate::responses::{GetMailInfos, ReadMail};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default)]

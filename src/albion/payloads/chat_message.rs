@@ -3,7 +3,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-use crate::{models::ChatChannel, util::value_i64};
+use crate::{albion::ChatChannel, util::value_i64};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ChatMessage {

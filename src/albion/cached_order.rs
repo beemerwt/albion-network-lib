@@ -1,4 +1,4 @@
-use crate::models::{AlbionLocation, AuctionType};
+use crate::albion::{ AuctionType, world::AlbionLocation };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
@@ -98,7 +98,7 @@ fn location_from_value(value: Option<Value>) -> AlbionLocation {
 #[cfg(test)]
 mod tests {
     use super::CachedOrder;
-    use crate::models::AuctionType;
+    use crate::albion::AuctionType;
     use serde::Deserialize;
     use serde_json::json;
 
@@ -211,7 +211,7 @@ mod tests {
 
         assert_eq!(
             order.location,
-            crate::models::AlbionLocation::from_id("3008")
+            crate::albion::world::AlbionLocation::from_id("3008")
         );
     }
 
@@ -243,6 +243,6 @@ mod tests {
 
         let order: CachedOrder = serde_json::from_value(value).unwrap();
 
-        assert_eq!(order.location, crate::models::AlbionLocation::unknown());
+        assert_eq!(order.location, crate::albion::world::AlbionLocation::unknown());
     }
 }

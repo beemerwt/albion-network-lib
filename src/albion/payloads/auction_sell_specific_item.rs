@@ -1,4 +1,4 @@
-use crate::models::CachedOrder;
+use crate::albion::CachedOrder;
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

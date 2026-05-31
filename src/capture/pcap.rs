@@ -1,30 +1,14 @@
 use crate::{
     error::Result,
     util::{read_u16, read_u32},
+    Endpoint
 };
 use std::{
     collections::HashMap,
-    fmt, fs,
+    fs,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::Path,
 };
-
-pub struct Endpoint {
-    pub ip: IpAddr,
-    pub port: u16,
-}
-
-impl Endpoint {
-    pub fn is_albion_port(&self) -> bool {
-        true // self.port == 5056 || self.port == 4535
-    }
-}
-
-impl fmt::Display for Endpoint {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}:{}", self.ip, self.port)
-    }
-}
 
 pub struct UdpPacket<'a> {
     pub source: Endpoint,

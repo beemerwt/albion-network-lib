@@ -90,5 +90,9 @@ pub fn hex_upper(bytes: &[u8]) -> String {
 }
 
 pub fn dotnet_ticks_to_unix_millis(ticks: i64) -> i64 {
-    (ticks - DOTNET_EPOCH_TICKS) / TICKS_PER_MILLISECOND
+    if ticks >= DOTNET_EPOCH_TICKS {
+        (ticks - DOTNET_EPOCH_TICKS) / TICKS_PER_MILLISECOND
+    } else {
+        ticks
+    }
 }

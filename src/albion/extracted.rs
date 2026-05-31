@@ -1,10 +1,13 @@
-use crate::{
-    models::AlbionMail,
-    requests::{AuctionBuyOffer, AuctionGetOffers, AuctionGetRequests, AuctionSellSpecificItem},
-    responses::{
-        AuctionGetOffersResult, AuctionGetRequestsResult, AuctionTradeResponse, ChatMessage,
+use crate::albion::{
+    AlbionMail,
+    payloads::{
+        AuctionBuyOffer,
+        AuctionGetOffers, AuctionGetOffersResult,
+        AuctionGetRequests, AuctionGetRequestsResult,
+        AuctionSellSpecificItem,
+        AuctionTradeResponse, ChatMessage,
         GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel,
-    },
+    }
 };
 use serde::Serialize;
 use serde_json::Value;

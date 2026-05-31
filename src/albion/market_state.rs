@@ -3,7 +3,7 @@ use crate::albion::{
     OperationType,
     TradeType,
 };
-use crate::responses::AuctionTrade;
+use crate::albion::payloads::AuctionTrade;
 use chrono::Utc;
 use std::collections::HashMap;
 

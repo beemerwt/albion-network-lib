@@ -1,11 +1,52 @@
 use crate::albion::{
-    PlayerState, WorldMap, AlbionMail,
+    AlbionLocation,
+    AlbionMail,
+    CachedOrder,
+    ChatChannel,
+    EventCode,
+    ExtractedPacket,
+    MarketPlaceNotification,
+    MailInfoMetadata,
+    OperationType,
+    OperationCode,
+    PlayerState,
+    TradeType,
+    WorldMap,
+    payloads::{
+        AuctionBuyOffer,
+        AuctionGetOffers,
+        AuctionGetOffersResult,
+        AuctionGetRequests,
+        AuctionGetRequestsResult,
+        AuctionSellSpecificItem,
+        AuctionTrade,
+        AuctionTradeResponse,
+        ChatMessage,
+        GetMailInfos,
+        JoinResponse,
+        JoinedChatChannel,
+        LeftChatChannel,
+        ReadMail,
+    },
 };
-use crate::protocol::Protocol18Deserializer;
+use crate::{
+    DecodedEvent,
+    DecodedOperation,
+    DecodedPacket,
+    DecodedUnknown,
+    Endpoint,
+    error::Result,
+    packet::{PacketMetadata, RawParameters},
+    protocol::Protocol18Deserializer,
+    util::{read_i32_be, to_signed_short, value_i64},
+};
+use chrono::Utc;
+use serde_json::{Value, json};
 
 use std::{
+    collections::{BTreeMap, HashMap},
+    net::{IpAddr, Ipv4Addr},
     sync::Arc,
-    collections::HashMap,
 };
 
 const COMMAND_DISCONNECT: u8 = 4;
@@ -18,6 +59,18 @@ const MESSAGE_OPERATION_RESPONSE: u8 = 3;
 const MESSAGE_EVENT: u8 = 4;
 const ITEM_NAME_MAPPINGS_URL: &str =
     "https://cdn.albionfreemarket.com/AlbionFormattedItemsParser/us_name_mappings.json";
+
+struct PendingSegment {
+    payload: Vec<u8>,
+    written: usize,
+    total_length: usize,
+}
+
+struct CodeParseError {
+    raw_code: Option<i32>,
+    reason: &'static str,
+    message: String,
+}
 
 pub struct PhotonParser {
     file_name: String,
@@ -103,7 +156,7 @@ impl PhotonParser {
         packet_number: usize,
         source: &str,
         destination: &str,
-        debug: bool,
+        _debug: bool,
     ) -> Result<&'static str> {
         if payload.len() < 12 {
             return Ok("InvalidHeader");
@@ -340,17 +393,14 @@ impl PhotonParser {
             self.extract_operation(packet_kind, operation_code, &parameters, return_code);
         self.decoded_packets
             .push(DecodedPacket::Operation(DecodedOperation {
+                metadata: packet_metadata(&self.file_name, packet_number, source, destination),
                 file: self.file_name.clone(),
-                packet_number,
-                direction: direction(source, destination).to_string(),
-                source: source.to_string(),
-                destination: destination.to_string(),
                 message_type: format!("operation_{packet_kind}"),
                 code: operation_code,
                 name: operation_name.to_string(),
                 return_code,
                 debug_message: debug_message.to_string(),
-                parameters: params_to_json(&parameters),
+                parameters: RawParameters::new(parameters.clone()).to_serializable(),
                 extracted,
             }));
         Ok(())
@@ -393,17 +443,14 @@ impl PhotonParser {
         let extracted = self.extract_event(event_code, &parameters);
         self.decoded_packets
             .push(DecodedPacket::Event(DecodedEvent {
+                metadata: packet_metadata(&self.file_name, packet_number, source, destination),
                 file: self.file_name.clone(),
-                packet_number,
-                direction: direction(source, destination).to_string(),
-                source: source.to_string(),
-                destination: destination.to_string(),
                 message_type: "event".to_string(),
                 code: event_code,
                 name: event_name.to_string(),
                 return_code: None,
                 debug_message: String::new(),
-                parameters: params_to_json(&parameters),
+                parameters: RawParameters::new(parameters.clone()).to_serializable(),
                 extracted,
             }));
         Ok(())
@@ -425,11 +472,8 @@ impl PhotonParser {
     ) {
         self.decoded_packets
             .push(DecodedPacket::Unknown(DecodedUnknown {
+                metadata: packet_metadata(&self.file_name, packet_number, source, destination),
                 file: self.file_name.clone(),
-                packet_number,
-                direction: direction(source, destination).to_string(),
-                source: source.to_string(),
-                destination: destination.to_string(),
                 message_type,
                 kind,
                 code_parameter,
@@ -437,7 +481,7 @@ impl PhotonParser {
                 reason: reason.to_string(),
                 return_code,
                 debug_message: debug_message.to_string(),
-                parameters: params_to_json(&parameters),
+                parameters: RawParameters::new(parameters).to_serializable(),
             }));
     }
 
@@ -519,7 +563,7 @@ impl PhotonParser {
                 let order_id = parameters.get(&1).and_then(value_i64);
                 let cached_order =
                     order_id.and_then(|id| self.market_orders_by_id.get(&id).cloned());
-                let request = AuctionSellSpecificItemRequest {
+                let request = AuctionSellSpecificItem {
                     amount,
                     cached_order: cached_order.clone(),
                     order_id,
@@ -650,4 +694,198 @@ impl PhotonParser {
             _ => None,
         }
     }
+
+    fn cache_mail_infos(&mut self, response: &GetMailInfos) {
+        for index in 0..response.mail_ids.len() {
+            let Some(location_id) = response
+                .location_ids
+                .get(index)
+                .map(|location_id| normalize_mail_location_id(location_id))
+            else {
+                continue;
+            };
+
+            let Some(info_type) = response.types.get(index).copied() else {
+                continue;
+            };
+
+            let Some(received) = response.received.get(index).copied() else {
+                continue;
+            };
+
+            let metadata = MailInfoMetadata {
+                mail_id: response.mail_ids[index],
+                location_id,
+                info_type,
+                received,
+            };
+
+            self.mail_infos_by_id
+                .insert(metadata.mail_id, metadata.clone());
+
+            if let Some(read_mail) = self.read_mails_by_id.get(&metadata.mail_id).cloned() {
+                let mail = self.build_albion_mail(&metadata, &read_mail);
+                self.albion_mails_by_id.insert(mail.id, mail);
+            }
+        }
+    }
+
+    fn cache_read_mail(&mut self, response: ReadMail) -> Option<AlbionMail> {
+        self.read_mails_by_id
+            .insert(response.mail_id, response.clone());
+
+        let metadata = self.mail_infos_by_id.get(&response.mail_id)?.clone();
+        let mail = self.build_albion_mail(&metadata, &response);
+
+        self.albion_mails_by_id.insert(mail.id, mail.clone());
+        Some(mail)
+    }
+
+    fn build_albion_mail(&self, metadata: &MailInfoMetadata, read_mail: &ReadMail) -> AlbionMail {
+        let mut mail = AlbionMail::from_correlated(
+            metadata.mail_id,
+            self.world_map.resolve_location(&metadata.location_id),
+            self.player_state.player_name.clone(),
+            metadata.info_type,
+            metadata.received,
+            &read_mail.mail_string,
+        );
+
+        mail.item_name = self.item_names_by_id.get(&mail.item_id).cloned();
+        mail
+    }
+}
+
+fn parse_operation_code(
+    params: &BTreeMap<u8, Value>,
+    debug: bool,
+) -> std::result::Result<OperationCode, CodeParseError> {
+    let Some(value) = params.get(&253).and_then(value_i64) else {
+        if debug {
+            for (code, value) in params {
+                println!("{code}: {}", value);
+            }
+        }
+
+        return Err(CodeParseError {
+            raw_code: None,
+            reason: "missing_operation_code",
+            message: "Operation code parameter 253 is missing".to_string(),
+        });
+    };
+
+    let code = to_signed_short(value);
+    OperationCode::try_from(code).map_err(|_| CodeParseError {
+        raw_code: Some(code),
+        reason: "unknown_operation_code",
+        message: format!("Unknown operation code in parameter 253: {code}"),
+    })
+}
+
+fn parse_event_code(params: &BTreeMap<u8, Value>) -> std::result::Result<EventCode, CodeParseError> {
+    let Some(value) = params.get(&252).and_then(value_i64) else {
+        return Err(CodeParseError {
+            raw_code: None,
+            reason: "missing_event_code",
+            message: "Event code parameter 252 is missing".to_string(),
+        });
+    };
+
+    let code = to_signed_short(value);
+    if let Ok(event_code) = EventCode::try_from(code) {
+        return Ok(event_code);
+    }
+
+    let unsigned_value = (code as i64 & 0xffff) as i32;
+    let shifted = unsigned_value >> 4;
+    if (unsigned_value & 0x0f) == 0x01 {
+        if let Ok(event_code) = EventCode::try_from(shifted) {
+            return Ok(event_code);
+        }
+    }
+
+    Err(CodeParseError {
+        raw_code: Some(code),
+        reason: "unknown_event_code",
+        message: format!("Unknown event code in parameter 252: {code}"),
+    })
+}
+
+fn direction(source: &str, destination: &str) -> &'static str {
+    if source.ends_with(":5056") {
+        "server_to_client"
+    } else if destination.ends_with(":5056") {
+        "client_to_server"
+    } else {
+        "unknown"
+    }
+}
+
+fn normalize_mail_location_id(location_id: &str) -> String {
+    if location_id == "@BLACK_MARKET" {
+        return "3003".to_string();
+    }
+
+    location_id
+        .split('@')
+        .nth(1)
+        .unwrap_or(location_id)
+        .to_string()
+}
+
+fn operation_from_cached_order(
+    cached_order: Option<&CachedOrder>,
+    trade_type: &TradeType,
+) -> OperationType {
+    cached_order
+        .map(|order| OperationType::from_auction_type(&order.auction_type, trade_type))
+        .unwrap_or_else(|| OperationType::Unknown("missing_cached_order".to_string()))
+}
+
+fn silver_amount(amount: Option<i64>, cached_order: Option<&CachedOrder>) -> Option<i64> {
+    let amount = amount?;
+    let order = cached_order?;
+
+    Some(
+        (((order.unit_price_silver * amount) - order.distance_fee) as f64 / 10_000.0).floor()
+            as i64,
+    )
+}
+
+fn download_item_names() -> HashMap<String, String> {
+    let response = ureq::get(ITEM_NAME_MAPPINGS_URL)
+        .call()
+        .expect("failed to download item name mappings");
+    let text = response
+        .into_string()
+        .expect("failed to read item name mappings response");
+    serde_json::from_str(&text).expect("failed to parse item name mappings")
+}
+
+fn packet_metadata(
+    source_name: &str,
+    packet_number: usize,
+    source: &str,
+    destination: &str,
+) -> PacketMetadata {
+    let source = parse_endpoint(source);
+    let destination = parse_endpoint(destination);
+
+    PacketMetadata {
+        source_name: source_name.to_string(),
+        packet_number,
+        direction: crate::packet::PacketDirection::from_endpoints(&source, &destination),
+        source,
+        destination,
+    }
+}
+
+fn parse_endpoint(value: &str) -> Endpoint {
+    let (ip_text, port_text) = value.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
+    let ip = ip_text
+        .parse::<IpAddr>()
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    let port = port_text.parse::<u16>().unwrap_or(0);
+
+    Endpoint { ip, port }
 }

@@ -1,20 +1,21 @@
 
+use crate::{error::Result, util::hex_upper};
 
-struct Reader<'a> {
+pub(crate) struct Reader<'a> {
     data: &'a [u8],
-    pos: usize,
+    pub(crate) pos: usize,
 }
 
 impl<'a> Reader<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    pub(crate) fn new(data: &'a [u8]) -> Self {
         Self { data, pos: 0 }
     }
 
-    fn remaining(&self) -> usize {
+    pub(crate) fn remaining(&self) -> usize {
         self.data.len().saturating_sub(self.pos)
     }
 
-    fn read_u8(&mut self) -> Result<u8> {
+    pub(crate) fn read_u8(&mut self) -> Result<u8> {
         let byte = *self
             .data
             .get(self.pos)
@@ -23,7 +24,7 @@ impl<'a> Reader<'a> {
         Ok(byte)
     }
 
-    fn read_bytes(&mut self, count: usize) -> Result<&'a [u8]> {
+    pub(crate) fn read_bytes(&mut self, count: usize) -> Result<&'a [u8]> {
         if self.remaining() < count {
             return Err(format!("Expected {count} bytes, got {}", self.remaining()).into());
         }
@@ -32,23 +33,23 @@ impl<'a> Reader<'a> {
         Ok(&self.data[start..self.pos])
     }
 
-    fn read_i16_le(&mut self) -> Result<i16> {
+    pub(crate) fn read_i16_le(&mut self) -> Result<i16> {
         Ok(i16::from_le_bytes(self.read_bytes(2)?.try_into().unwrap()))
     }
 
-    fn read_u16_le(&mut self) -> Result<u16> {
+    pub(crate) fn read_u16_le(&mut self) -> Result<u16> {
         Ok(u16::from_le_bytes(self.read_bytes(2)?.try_into().unwrap()))
     }
 
-    fn read_f32_le(&mut self) -> Result<f32> {
+    pub(crate) fn read_f32_le(&mut self) -> Result<f32> {
         Ok(f32::from_le_bytes(self.read_bytes(4)?.try_into().unwrap()))
     }
 
-    fn read_f64_le(&mut self) -> Result<f64> {
+    pub(crate) fn read_f64_le(&mut self) -> Result<f64> {
         Ok(f64::from_le_bytes(self.read_bytes(8)?.try_into().unwrap()))
     }
 
-    fn peek_hex(&self) -> String {
+    pub(crate) fn peek_hex(&self) -> String {
         let end = (self.pos + 16).min(self.data.len());
         let mut text = hex_upper(&self.data[self.pos..end]);
         if end < self.data.len() {

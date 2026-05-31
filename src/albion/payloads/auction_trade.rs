@@ -1,4 +1,4 @@
-use crate::models::{CachedOrder, OperationType, TradeType};
+use crate::albion::{CachedOrder, OperationType, TradeType};
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

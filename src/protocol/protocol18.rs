@@ -1,5 +1,6 @@
 use crate::{
     error::Result,
+    protocol::Reader,
     util::{bytes_value, hex_lower, hex_upper, json_key, params_to_json},
 };
 use serde_json::{Map, Value, json};

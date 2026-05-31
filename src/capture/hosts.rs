@@ -1,43 +1,6 @@
 use crate::error::Result;
 use std::{fs, net::IpAddr, path::Path, str::FromStr};
 
-pub struct HostFilter {
-    ranges: Vec<CidrRange>,
-}
-
-impl HostFilter {
-    pub fn from_file(path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(path)?;
-        let mut ranges = Vec::new();
-
-        for (line_number, line) in content.lines().enumerate() {
-            let line = line.split('#').next().unwrap_or_default().trim();
-            if line.is_empty() {
-                continue;
-            }
-            ranges.push(CidrRange::from_str(line).map_err(|message| {
-                format!(
-                    "{}:{} invalid CIDR entry {:?}: {}",
-                    path.display(),
-                    line_number + 1,
-                    line,
-                    message
-                )
-            })?);
-        }
-
-        Ok(Self { ranges })
-    }
-
-    pub fn contains(&self, ip: IpAddr) -> bool {
-        self.ranges.iter().any(|range| range.contains(ip))
-    }
-
-    pub fn len(&self) -> usize {
-        self.ranges.len()
-    }
-}
-
 enum CidrRange {
     V4 { network: u32, mask: u32 },
     V6 { network: u128, mask: u128 },
@@ -89,6 +52,43 @@ impl FromStr for CidrRange {
                 })
             }
         }
+    }
+}
+
+pub struct HostFilter {
+    ranges: Vec<CidrRange>,
+}
+
+impl HostFilter {
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let content = fs::read_to_string(path)?;
+        let mut ranges = Vec::new();
+
+        for (line_number, line) in content.lines().enumerate() {
+            let line = line.split('#').next().unwrap_or_default().trim();
+            if line.is_empty() {
+                continue;
+            }
+            ranges.push(CidrRange::from_str(line).map_err(|message| {
+                format!(
+                    "{}:{} invalid CIDR entry {:?}: {}",
+                    path.display(),
+                    line_number + 1,
+                    line,
+                    message
+                )
+            })?);
+        }
+
+        Ok(Self { ranges })
+    }
+
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        self.ranges.iter().any(|range| range.contains(ip))
+    }
+
+    pub fn len(&self) -> usize {
+        self.ranges.len()
     }
 }
 

@@ -21,9 +21,9 @@ pub enum PacketDirection {
 
 impl PacketDirection {
     pub fn from_endpoints(source: &Endpoint, destination: &Endpoint) -> Self {
-        if source.is_albion_server_port() {
+        if source.is_albion_port() {
             Self::ServerToClient
-        } else if destination.is_albion_server_port() {
+        } else if destination.is_albion_port() {
             Self::ClientToServer
         } else {
             Self::Unknown
