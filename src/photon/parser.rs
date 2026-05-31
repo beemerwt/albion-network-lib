@@ -1,5 +1,6 @@
 use crate::{
-    DecodedPacket, Endpoint,
+    packet::DecodedPacket,
+    Endpoint,
     error::Result,
     packet::{OperationPacketKind, PacketMetadata},
     photon::{

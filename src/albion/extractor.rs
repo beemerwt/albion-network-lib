@@ -42,7 +42,7 @@ impl AlbionExtractor {
     pub fn with_defaults() -> Self {
         Self::new(
             Arc::new(WorldMap::from_embedded().unwrap_or_else(|_| WorldMap::empty())),
-            ItemNameResolver::empty(),
+            ItemNameResolver::download_default().unwrap_or_else(|_| ItemNameResolver::empty()),
         )
     }
 

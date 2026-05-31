@@ -12,6 +12,16 @@ impl Endpoint {
     pub fn is_albion_port(&self) -> bool {
         matches!(self.port, 5056 | 4535)
     }
+
+    pub fn from_str(ip_str: &str) -> Self {
+        let (ip, port) = ip_str
+            .split_once(':')
+            .expect("invalid endpoint format");
+        Self {
+            ip: ip.parse().expect("invalid IP address"),
+            port: port.parse().expect("invalid port"),
+        }
+    }
 }
 
 impl fmt::Display for Endpoint {

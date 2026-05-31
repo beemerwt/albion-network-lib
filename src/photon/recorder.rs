@@ -1,5 +1,5 @@
 use crate::{
-    DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown,
+    packet::{ DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown },
     albion::{AlbionExtractor, EventCode, parse_event_code, parse_operation_code},
     error::Result,
     packet::{OperationPacketKind, PacketMetadata, RawParameters},
@@ -64,9 +64,7 @@ impl PacketRecorder {
         self.decoded_packets
             .push(DecodedPacket::Operation(DecodedOperation {
                 metadata,
-                file: String::new(),
                 kind: packet_kind,
-                message_type: format!("operation_{kind_str}"),
                 code: operation_code,
                 name: operation_name.to_string(),
                 return_code,

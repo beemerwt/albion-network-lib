@@ -1,5 +1,6 @@
 // src/packet/metadata.rs
 use crate::capture::Endpoint;
+use std::fmt;
 use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -35,6 +36,16 @@ pub enum PacketDirection {
     ClientToServer,
     ServerToClient,
     Unknown,
+}
+
+impl fmt::Display for PacketDirection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PacketDirection::ClientToServer => write!(f, "ClientToServer"),
+            PacketDirection::ServerToClient => write!(f, "ServerToClient"),
+            PacketDirection::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 impl PacketDirection {

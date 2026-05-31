@@ -10,8 +10,6 @@ use crate::{
 pub struct DecodedOperation {
     pub metadata: PacketMetadata,
     pub kind: OperationPacketKind,
-    pub file: String,
-    pub message_type: String,
     pub code: OperationCode,
     pub name: String,
     pub return_code: Option<i16>,
