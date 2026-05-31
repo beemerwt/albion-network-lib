@@ -71,8 +71,27 @@ impl FragmentReassembler {
 
         Ok(None)
     }
+}
 
-    pub fn clear(&mut self) {
-        self.pending_segments.clear();
+#[cfg(test)]
+mod tests {
+    use super::FragmentReassembler;
+
+    #[test]
+    fn reassembles_complete_fragment_sequence() {
+        let mut fragments = FragmentReassembler::new();
+
+        assert_eq!(fragments.push_fragment(7, 5, 0, b"he").unwrap(), None);
+        assert_eq!(
+            fragments.push_fragment(7, 5, 2, b"llo").unwrap(),
+            Some(b"hello".to_vec())
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_bounds_fragment() {
+        let mut fragments = FragmentReassembler::new();
+
+        assert!(fragments.push_fragment(7, 5, 4, b"xx").is_err());
     }
 }

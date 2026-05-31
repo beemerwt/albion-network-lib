@@ -11,20 +11,11 @@ use crate::{
     protocol::Protocol18Deserializer,
 };
 use crate::{
-    albion::{AlbionExtractor, AlbionMail, CachedOrder, OperationType, PlayerState, TradeType},
+    albion::{AlbionExtractor, AlbionMail, PlayerState},
     photon::recorder::PacketRecorder,
 };
 
-use std::{
-    collections::HashMap,
-    net::{IpAddr, Ipv4Addr},
-};
-
-struct PendingSegment {
-    payload: Vec<u8>,
-    written: usize,
-    total_length: usize,
-}
+use std::{collections::HashMap, sync::Arc};
 
 pub struct PhotonParser {
     source_name: String,
@@ -37,14 +28,15 @@ pub struct PhotonParser {
 
 impl PhotonParser {
     pub fn new(config: PhotonParserConfig) -> Self {
-        let capture_unknown_packets = std::env::var("ALBION_NETWORK_DEBUG").as_deref() == Ok("1");
+        let capture_unknown_packets = config.capture_unknown_packets
+            || std::env::var("ALBION_NETWORK_DEBUG").as_deref() == Ok("1");
         Self {
             source_name: config.source_name,
             debug: config.debug,
             deserializer: Protocol18Deserializer,
             fragments: FragmentReassembler::new(),
             recorder: PacketRecorder::new(capture_unknown_packets),
-            extractor: AlbionExtractor::with_defaults(),
+            extractor: AlbionExtractor::new(Arc::new(config.world_map), config.item_names),
         }
     }
 
@@ -149,7 +141,7 @@ impl PhotonParser {
                 }
             }
 
-            PhotonCommand::Unknown { .. } => "Undefined",
+            PhotonCommand::Unknown => "Undefined",
         };
 
         Ok((status, header.next_offset))
@@ -208,56 +200,9 @@ impl PhotonParser {
                 return Ok(("Encrypted", payload.len()));
             }
 
-            PhotonMessage::Unknown { .. } => {}
+            PhotonMessage::Unknown => {}
         }
 
         Ok(("Success", payload.len()))
     }
-}
-
-fn direction(source: &str, destination: &str) -> &'static str {
-    if source.ends_with(":5056") {
-        "server_to_client"
-    } else if destination.ends_with(":5056") {
-        "client_to_server"
-    } else {
-        "unknown"
-    }
-}
-
-fn operation_from_cached_order(
-    cached_order: Option<&CachedOrder>,
-    trade_type: &TradeType,
-) -> OperationType {
-    cached_order
-        .map(|order| OperationType::from_auction_type(&order.auction_type, trade_type))
-        .unwrap_or_else(|| OperationType::Unknown("missing_cached_order".to_string()))
-}
-
-fn packet_metadata(
-    source_name: &str,
-    packet_number: usize,
-    source: &str,
-    destination: &str,
-) -> PacketMetadata {
-    let source = parse_endpoint(source);
-    let destination = parse_endpoint(destination);
-
-    PacketMetadata {
-        source_name: source_name.to_string(),
-        packet_number,
-        direction: crate::packet::PacketDirection::from_endpoints(&source, &destination),
-        source,
-        destination,
-    }
-}
-
-fn parse_endpoint(value: &str) -> Endpoint {
-    let (ip_text, port_text) = value.rsplit_once(':').unwrap_or(("0.0.0.0", "0"));
-    let ip = ip_text
-        .parse::<IpAddr>()
-        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-    let port = port_text.parse::<u16>().unwrap_or(0);
-
-    Endpoint { ip, port }
 }

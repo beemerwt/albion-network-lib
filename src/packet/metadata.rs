@@ -38,16 +38,6 @@ pub enum PacketDirection {
 }
 
 impl PacketDirection {
-    pub fn from_addresses(source: &str, destination: &str) -> Self {
-        if source.ends_with(":5056") || source.ends_with(":4535") {
-            Self::ServerToClient
-        } else if destination.ends_with(":5056") || destination.ends_with(":4535") {
-            Self::ClientToServer
-        } else {
-            Self::Unknown
-        }
-    }
-
     pub fn from_endpoints(source: &Endpoint, destination: &Endpoint) -> Self {
         if source.is_albion_port() {
             Self::ServerToClient
@@ -56,5 +46,40 @@ impl PacketDirection {
         } else {
             Self::Unknown
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PacketDirection, PacketMetadata};
+    use crate::capture::Endpoint;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn endpoint(port: u16) -> Endpoint {
+        Endpoint {
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            port,
+        }
+    }
+
+    #[test]
+    fn metadata_direction_is_server_to_client_when_source_is_albion_port() {
+        let metadata = PacketMetadata::new("test".to_string(), 1, endpoint(5056), endpoint(9999));
+
+        assert_eq!(metadata.direction, PacketDirection::ServerToClient);
+    }
+
+    #[test]
+    fn metadata_direction_is_client_to_server_when_destination_is_albion_port() {
+        let metadata = PacketMetadata::new("test".to_string(), 1, endpoint(9999), endpoint(4535));
+
+        assert_eq!(metadata.direction, PacketDirection::ClientToServer);
+    }
+
+    #[test]
+    fn metadata_direction_is_unknown_when_neither_endpoint_is_albion_port() {
+        let metadata = PacketMetadata::new("test".to_string(), 1, endpoint(1000), endpoint(2000));
+
+        assert_eq!(metadata.direction, PacketDirection::Unknown);
     }
 }

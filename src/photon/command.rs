@@ -50,10 +50,6 @@ impl PhotonCommandHeader {
             next_offset,
         })
     }
-
-    pub fn payload<'a>(&self, data: &'a [u8]) -> &'a [u8] {
-        &data[self.payload_offset..self.next_offset]
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -102,10 +98,7 @@ pub enum PhotonCommand<'a> {
         header: FragmentHeader,
         payload: &'a [u8],
     },
-    Unknown {
-        command_type: u8,
-        payload: &'a [u8],
-    },
+    Unknown,
 }
 
 pub fn parse_command<'a>(
@@ -139,10 +132,7 @@ pub fn parse_command<'a>(
             }
         }
 
-        _ => PhotonCommand::Unknown {
-            command_type: header.command_type,
-            payload,
-        },
+        _ => PhotonCommand::Unknown,
     };
 
     Ok((command, header))

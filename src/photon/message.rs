@@ -13,7 +13,7 @@ pub enum PhotonMessage<'a> {
     OperationResponse(&'a [u8]),
     Event(&'a [u8]),
     Encrypted,
-    Unknown { message_type: u8, payload: &'a [u8] },
+    Unknown,
 }
 
 impl<'a> PhotonMessage<'a> {
@@ -30,10 +30,10 @@ impl<'a> PhotonMessage<'a> {
             MESSAGE_OPERATION_RESPONSE => Self::OperationResponse(payload),
             MESSAGE_EVENT => Self::Event(payload),
             MESSAGE_ENCRYPTED => Self::Encrypted,
-            _ => Self::Unknown {
-                message_type,
-                payload,
-            },
+            _ => {
+                let _ = payload;
+                Self::Unknown
+            }
         };
 
         Ok(message)

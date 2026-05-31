@@ -27,7 +27,6 @@ mod tests {
 
     use super::ReadMail;
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn parses_full_read_mail_response() {

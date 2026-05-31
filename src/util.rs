@@ -1,16 +1,8 @@
 use crate::error::Result;
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 
 const DOTNET_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
 const TICKS_PER_MILLISECOND: i64 = 10_000;
-
-pub fn params_to_json(params: &BTreeMap<u8, Value>) -> BTreeMap<String, Value> {
-    params
-        .iter()
-        .map(|(key, value)| (key.to_string(), value.clone()))
-        .collect()
-}
 
 pub fn value_i64(value: &Value) -> Option<i64> {
     match value {

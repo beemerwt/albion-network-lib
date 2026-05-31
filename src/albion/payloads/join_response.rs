@@ -37,7 +37,6 @@ mod tests {
     use super::JoinResponse;
     use crate::{albion::Guid, packet::RawParameters};
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn parses_full_join_response() {

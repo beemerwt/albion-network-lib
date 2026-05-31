@@ -9,14 +9,6 @@ pub enum OperationPacketKind {
     Response,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UnknownPacketKind {
-    OperationRequest,
-    OperationResponse,
-    Event,
-}
-
 impl OperationPacketKind {
     pub fn message_type(self) -> &'static str {
         match self {
@@ -29,13 +21,6 @@ impl OperationPacketKind {
         match self {
             Self::Request => "request",
             Self::Response => "response",
-        }
-    }
-
-    pub fn into_unknown_kind(self) -> UnknownPacketKind {
-        match self {
-            Self::Request => UnknownPacketKind::OperationRequest,
-            Self::Response => UnknownPacketKind::OperationResponse,
         }
     }
 }
