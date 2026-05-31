@@ -27,9 +27,7 @@ pub fn parse_operation_code(
     })
 }
 
-pub fn parse_event_code(
-    params: &RawParameters,
-) -> std::result::Result<EventCode, CodeParseError> {
+pub fn parse_event_code(params: &RawParameters) -> std::result::Result<EventCode, CodeParseError> {
     let Some(value) = params.get(252).and_then(value_i64) else {
         return Err(CodeParseError {
             raw_code: None,

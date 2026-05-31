@@ -2,15 +2,16 @@ use crate::{
     DecodedPacket, Endpoint,
     error::Result,
     packet::{OperationPacketKind, PacketMetadata},
+    photon::{
+        PhotonParserConfig,
+        command::{PhotonCommand, parse_command},
+        fragment::FragmentReassembler,
+        message::PhotonMessage,
+    },
     protocol::Protocol18Deserializer,
-    util::{read_i32_be},
 };
 use crate::{
-    albion::{
-        AlbionExtractor, AlbionMail, CachedOrder,
-        OperationType,
-        PlayerState, TradeType,
-    },
+    albion::{AlbionExtractor, AlbionMail, CachedOrder, OperationType, PlayerState, TradeType},
     photon::recorder::PacketRecorder,
 };
 
@@ -19,15 +20,6 @@ use std::{
     net::{IpAddr, Ipv4Addr},
 };
 
-const COMMAND_DISCONNECT: u8 = 4;
-const COMMAND_SEND_RELIABLE: u8 = 6;
-const COMMAND_SEND_UNRELIABLE: u8 = 7;
-const COMMAND_SEND_FRAGMENT: u8 = 8;
-
-const MESSAGE_OPERATION_REQUEST: u8 = 2;
-const MESSAGE_OPERATION_RESPONSE: u8 = 3;
-const MESSAGE_EVENT: u8 = 4;
-
 struct PendingSegment {
     payload: Vec<u8>,
     written: usize,
@@ -35,22 +27,22 @@ struct PendingSegment {
 }
 
 pub struct PhotonParser {
-    file_name: String,
+    source_name: String,
     debug: bool,
     deserializer: Protocol18Deserializer,
-    pending_segments: HashMap<i32, PendingSegment>,
+    fragments: FragmentReassembler,
     recorder: PacketRecorder,
     extractor: AlbionExtractor,
 }
 
 impl PhotonParser {
-    pub fn new(file_name: String, debug: bool) -> Self {
+    pub fn new(config: PhotonParserConfig) -> Self {
         let capture_unknown_packets = std::env::var("ALBION_NETWORK_DEBUG").as_deref() == Ok("1");
         Self {
-            file_name,
-            debug,
+            source_name: config.source_name,
+            debug: config.debug,
             deserializer: Protocol18Deserializer,
-            pending_segments: HashMap::new(),
+            fragments: FragmentReassembler::new(),
             recorder: PacketRecorder::new(capture_unknown_packets),
             extractor: AlbionExtractor::with_defaults(),
         }
@@ -80,9 +72,12 @@ impl PhotonParser {
         &mut self,
         payload: &[u8],
         packet_number: usize,
-        source: &str,
-        destination: &str,
+        source: Endpoint,
+        destination: Endpoint,
     ) -> Result<&'static str> {
+        let metadata =
+            PacketMetadata::new(self.source_name.clone(), packet_number, source, destination);
+
         if payload.len() < 12 {
             return Ok("InvalidHeader");
         }
@@ -103,14 +98,7 @@ impl PhotonParser {
             if payload.len().saturating_sub(offset) < 12 {
                 return Ok("InvalidHeader");
             }
-            let result = self.handle_command(
-                payload,
-                offset,
-                packet_number,
-                command_index,
-                source,
-                destination,
-            )?;
+            let result = self.handle_command(payload, offset, command_index, &metadata)?;
             status = result.0;
             offset = result.1;
             if status == "InvalidHeader" {
@@ -123,84 +111,63 @@ impl PhotonParser {
     fn handle_command(
         &mut self,
         data: &[u8],
-        mut offset: usize,
-        packet_number: usize,
+        offset: usize,
         command_index: u8,
-        source: &str,
-        destination: &str,
+        metadata: &PacketMetadata,
     ) -> Result<(&'static str, usize)> {
-        let command_type = data[offset];
-        let command_length = read_i32_be(data, offset + 4)? - 12;
-        let sequence_number = read_i32_be(data, offset + 8)?;
-        offset += 12;
+        let (command, header) = parse_command(data, offset)?;
+
         if self.debug {
+            let packet_number = metadata.packet_number;
+            let command_type = header.command_type;
+            let command_length = header.command_length;
+            let sequence_number = header.sequence_number;
             eprintln!(
                 "DEBUG:albion:packet={packet_number} command={command_index} type={command_type} sequence={sequence_number} payload_length={command_length}"
             );
         }
-        if command_length < 0 || data.len().saturating_sub(offset) < command_length as usize {
-            return Ok(("InvalidHeader", offset));
-        }
-        let command_length = command_length as usize;
-        match command_type {
-            COMMAND_DISCONNECT => Ok(("DisconnectCommand", offset + command_length)),
-            COMMAND_SEND_UNRELIABLE => {
-                if command_length < 4 {
-                    return Ok(("InvalidHeader", offset));
-                }
-                self.handle_send_reliable(
-                    data,
-                    offset + 4,
-                    command_length - 4,
-                    packet_number,
-                    source,
-                    destination,
-                )
+
+        let status = match command {
+            PhotonCommand::Disconnect => "DisconnectCommand",
+
+            PhotonCommand::SendReliable { payload } | PhotonCommand::SendUnreliable { payload } => {
+                let (status, _) = self.handle_message_payload(payload, metadata)?;
+                status
             }
-            COMMAND_SEND_RELIABLE => self.handle_send_reliable(
-                data,
-                offset,
-                command_length,
-                packet_number,
-                source,
-                destination,
-            ),
-            COMMAND_SEND_FRAGMENT => self.handle_send_fragment(
-                data,
-                offset,
-                command_length,
-                packet_number,
-                source,
-                destination,
-            ),
-            _ => Ok(("Undefined", offset + command_length)),
-        }
+
+            PhotonCommand::Fragment { header, payload } => {
+                if let Some(total_payload) = self.fragments.push_fragment(
+                    header.start_sequence_number,
+                    header.total_length,
+                    header.fragment_offset,
+                    payload,
+                )? {
+                    let (status, _) = self.handle_message_payload(&total_payload, metadata)?;
+                    status
+                } else {
+                    "Success"
+                }
+            }
+
+            PhotonCommand::Unknown { .. } => "Undefined",
+        };
+
+        Ok((status, header.next_offset))
     }
 
-    fn handle_send_reliable(
+    fn handle_message_payload(
         &mut self,
-        data: &[u8],
-        offset: usize,
-        command_length: usize,
-        packet_number: usize,
-        source: &str,
-        destination: &str,
+        payload: &[u8],
+        metadata: &PacketMetadata,
     ) -> Result<(&'static str, usize)> {
-        if command_length < 2 || data.len().saturating_sub(offset) < command_length {
-            return Ok(("InvalidHeader", offset));
-        }
-        let message_type = data[offset + 1];
-        let operation_payload = &data[offset + 2..offset + command_length];
-        let metadata = packet_metadata(&self.file_name, packet_number, source, destination);
-        if message_type == 131 {
-            self.extractor.player_state_mut().set_has_encrypted_data(true);
-            return Ok(("Encrypted", offset + command_length));
-        }
-        match message_type {
-            MESSAGE_OPERATION_REQUEST => {
+        let message = PhotonMessage::parse(payload)?;
+
+        match message {
+            PhotonMessage::OperationRequest(operation_payload) => {
                 let (_, params) = self
                     .deserializer
                     .deserialize_operation_request(operation_payload)?;
+
                 self.recorder.record_operation(
                     &mut self.extractor,
                     metadata.clone(),
@@ -208,9 +175,10 @@ impl PhotonParser {
                     &params,
                     None,
                     "",
-                )?;
+                )?
             }
-            MESSAGE_OPERATION_RESPONSE => {
+
+            PhotonMessage::OperationResponse(operation_payload) => {
                 let (_, return_code, debug_message, params) = self
                     .deserializer
                     .deserialize_operation_response(operation_payload)?;
@@ -221,73 +189,29 @@ impl PhotonParser {
                     &params,
                     Some(return_code),
                     &debug_message,
-                )?;
+                )?
             }
-            MESSAGE_EVENT => {
-                let (event_code, mut params) = self
-                    .deserializer
-                    .deserialize_event_data(operation_payload)?;
+
+            PhotonMessage::Event(event_payload) => {
+                let (event_code, mut params) =
+                    self.deserializer.deserialize_event_data(event_payload)?;
                 self.recorder.record_event(
                     &mut self.extractor,
                     metadata.clone(),
                     event_code,
                     &mut params,
-                )?;
+                )?
             }
-            _ => {}
-        }
-        Ok(("Success", offset + command_length))
-    }
 
-    fn handle_send_fragment(
-        &mut self,
-        data: &[u8],
-        mut offset: usize,
-        command_length: usize,
-        packet_number: usize,
-        source: &str,
-        destination: &str,
-    ) -> Result<(&'static str, usize)> {
-        if command_length < 20 || data.len().saturating_sub(offset) < command_length {
-            return Ok(("InvalidHeader", offset));
-        }
-        let start_sequence_number = read_i32_be(data, offset)?;
-        let total_length = read_i32_be(data, offset + 12)? as usize;
-        let fragment_offset = read_i32_be(data, offset + 16)? as usize;
-        offset += 20;
-        let fragment_length = command_length - 20;
-        let fragment = &data[offset..offset + fragment_length];
+            PhotonMessage::Encrypted => {
+                self.extractor.mark_encrypted_data_seen();
+                return Ok(("Encrypted", payload.len()));
+            }
 
-        let pending = self
-            .pending_segments
-            .entry(start_sequence_number)
-            .or_insert_with(|| PendingSegment {
-                payload: vec![0; total_length],
-                written: 0,
-                total_length,
-            });
-        pending.payload[fragment_offset..fragment_offset + fragment_length]
-            .copy_from_slice(fragment);
-        pending.written += fragment_length;
-
-        if pending.written >= pending.total_length {
-            let total_payload = self
-                .pending_segments
-                .remove(&start_sequence_number)
-                .unwrap()
-                .payload;
-            let (status, _) = self.handle_send_reliable(
-                &total_payload,
-                0,
-                total_payload.len(),
-                packet_number,
-                source,
-                destination,
-            )?;
-            return Ok((status, offset + fragment_length));
+            PhotonMessage::Unknown { .. } => {}
         }
 
-        Ok(("Success", offset + fragment_length))
+        Ok(("Success", payload.len()))
     }
 }
 

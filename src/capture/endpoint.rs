@@ -10,7 +10,7 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn is_albion_port(&self) -> bool {
-        true // self.port == 5056 || self.port == 4535
+        matches!(self.port, 5056 | 4535)
     }
 }
 

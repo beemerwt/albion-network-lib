@@ -9,10 +9,7 @@ use serde_json::{Map, Value, json};
 pub struct Protocol18Deserializer;
 
 impl Protocol18Deserializer {
-    pub fn deserialize_operation_request(
-        &self,
-        payload: &[u8],
-    ) -> Result<(u8, RawParameters)> {
+    pub fn deserialize_operation_request(&self, payload: &[u8]) -> Result<(u8, RawParameters)> {
         let mut reader = Reader::new(payload);
         let operation_code = reader.read_u8()?;
         Ok((

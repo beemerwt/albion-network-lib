@@ -1,6 +1,7 @@
 use crate::error::Result;
 use std::{fs, net::IpAddr, path::Path, str::FromStr};
 
+#[derive(Clone, Debug)]
 enum CidrRange {
     V4 { network: u32, mask: u32 },
     V6 { network: u128, mask: u128 },
@@ -55,11 +56,30 @@ impl FromStr for CidrRange {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct HostFilter {
     ranges: Vec<CidrRange>,
 }
 
 impl HostFilter {
+    pub fn from_cidrs<I, S>(cidrs: I) -> std::result::Result<Self, String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut ranges = Vec::new();
+
+        for cidr in cidrs {
+            let cidr = cidr.as_ref().trim();
+            if cidr.is_empty() {
+                continue;
+            }
+            ranges.push(CidrRange::from_str(cidr)?);
+        }
+
+        Ok(Self { ranges })
+    }
+
     pub fn from_file(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let mut ranges = Vec::new();
@@ -89,6 +109,10 @@ impl HostFilter {
 
     pub fn len(&self) -> usize {
         self.ranges.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
     }
 }
 

@@ -282,7 +282,7 @@ impl AlbionExtractor {
 mod tests {
     use std::collections::HashMap;
 
-use super::*;
+    use super::*;
     use crate::{albion::WorldMap, packet::OperationPacketKind};
     use serde_json::json;
 

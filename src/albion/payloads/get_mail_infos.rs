@@ -5,7 +5,6 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct GetMailInfos {
