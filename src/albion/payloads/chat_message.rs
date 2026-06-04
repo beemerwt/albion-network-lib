@@ -22,7 +22,7 @@ impl ChatMessage {
         parameters: &RawParameters,
         channel_type: Option<ChatChannel>,
     ) -> Self {
-        let channel_id = parameters.get(0).and_then(value_i64).unwrap_or_default();
+        let channel_id = value_i64(parameters, 0).unwrap_or_default();
         let player_name = parameters
             .get(1)
             .and_then(Value::as_str)

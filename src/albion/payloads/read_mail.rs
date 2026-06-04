@@ -11,7 +11,7 @@ pub struct ReadMail {
 impl ReadMail {
     pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            mail_id: parameters.get(0).and_then(value_i64).unwrap_or_default(),
+            mail_id: value_i64(parameters, 0).unwrap_or_default(),
             mail_string: parameters
                 .get(1)
                 .and_then(Value::as_str)

@@ -1,4 +1,21 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::albion::AlbionLocation;
+
+#[derive(Clone, Debug, Default)]
+pub struct RepairCorrelationState {
+    repair_buildings: HashSet<i64>,
+    pending_repairs: HashMap<i64, PendingRepairAction>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PendingRepairAction {
+    pub building_id: i64,
+    pub started_at: i64,
+    pub num_items: i32,
+    pub cost: i32,
+    pub item_ids: Vec<i32>,
+}
 
 #[derive(Clone, Debug)]
 pub struct PlayerState {

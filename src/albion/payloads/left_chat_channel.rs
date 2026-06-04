@@ -9,7 +9,7 @@ pub struct LeftChatChannel {
 impl LeftChatChannel {
     pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            channel_id: parameters.get(0).and_then(value_i64).unwrap_or_default(),
+            channel_id: value_i64(parameters, 0).unwrap_or_default(),
         }
     }
 }

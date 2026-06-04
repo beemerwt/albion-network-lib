@@ -2,16 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     albion::{
-        AlbionLocation, CachedOrder, EventCode, ExtractedPacket, ItemNameResolver, OperationCode,
-        PlayerState, WorldMap,
-        chat_state::ChatState,
-        mail_state::MailState,
-        market_state::MarketState,
-        payloads::{
+        AlbionLocation, BuildingState, CachedOrder, EventCode, ExtractedPacket, ItemNameResolver, OperationCode, PlayerState, WorldMap, chat_state::ChatState, mail_state::MailState, market_state::MarketState, payloads::{
+            ActionOnBuildingCancel, ActionOnBuildingFinished, ActionOnBuildingStart,
             AuctionGetOffers, AuctionGetOffersResult, AuctionGetRequests, AuctionGetRequestsResult,
             ChatMessage, GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel,
-            MarketPlaceNotification, ReadMail,
-        },
+            MarketPlaceNotification, ReadMail, RepairBuildingInfo,
+        }, player_state::PendingRepairAction
     },
     packet::{OperationPacketKind, RawParameters},
     util::value_i64,
@@ -22,6 +18,7 @@ pub struct AlbionExtractor {
     pub world_map: Arc<WorldMap>,
     pub item_names: ItemNameResolver,
     pub player_state: PlayerState,
+    pub building_state: BuildingState,
     pub mail_state: MailState,
     pub market_state: MarketState,
     pub chat_state: ChatState,
@@ -33,6 +30,7 @@ impl AlbionExtractor {
             world_map,
             item_names,
             player_state: PlayerState::new(),
+            building_state: BuildingState::new(),
             market_state: MarketState::new(),
             mail_state: MailState::new(),
             chat_state: ChatState::new(),
@@ -75,6 +73,14 @@ impl AlbionExtractor {
     ) -> Option<ExtractedPacket> {
         let fallback_location_index = self.player_state.location_index();
         match (operation_code, packet_kind) {
+            (OperationCode::ActionOnBuildingStart, OperationPacketKind::Request) => {
+                self.building_state.begin_action(parameters);
+                return None;
+            }
+            (OperationCode::ActionOnBuildingCancel, OperationPacketKind::Request) => {
+                self.building_state.cancel_action();
+                return None;
+            }
             (OperationCode::AuctionGetOffers, OperationPacketKind::Request) => {
                 let orders = self.extract_market_orders(parameters, fallback_location_index);
                 return Some(ExtractedPacket::AuctionGetOffersRequest(AuctionGetOffers {
@@ -112,17 +118,13 @@ impl AlbionExtractor {
                 ));
             }
             (OperationCode::AuctionBuyOffer, OperationPacketKind::Request) => {
-                let amount = parameters.get(1).and_then(value_i64);
-                let order_id = parameters.get(2).and_then(value_i64);
-                let request = self.market_state.begin_buy_order_request(order_id, amount);
+                let request = self.market_state.begin_buy_order_request(parameters);
                 return Some(ExtractedPacket::AuctionBuyOfferRequest(request));
             }
             (OperationCode::AuctionSellSpecificItem, OperationPacketKind::Request) => {
-                let amount = parameters.get(4).and_then(value_i64);
-                let order_id = parameters.get(1).and_then(value_i64);
                 let request = self
                     .market_state
-                    .begin_sell_specific_item_request(order_id, amount);
+                    .begin_sell_specific_item_request(parameters);
                 return Some(ExtractedPacket::AuctionSellSpecificItemRequest(request));
             }
             (
@@ -225,6 +227,19 @@ impl AlbionExtractor {
         parameters: &RawParameters,
     ) -> Option<ExtractedPacket> {
         match event_code {
+            EventCode::RepairBuildingInfo => {
+                if let Some(info) = RepairBuildingInfo::from_params(parameters) {
+                    self.building_state.mark_repair_building(info);
+                }
+                None
+            }
+            EventCode::ActionOnBuildingCancel => {
+                self.building_state.cancel_action();
+                None
+            }
+            EventCode::ActionOnBuildingFinished => {
+                self.building_state.finish_action(parameters).map(ExtractedPacket::BuildingAction)
+            }
             EventCode::MarketPlaceNotification => {
                 Some(self.extract_marketplace_notification(parameters))
             }
@@ -249,9 +264,7 @@ impl AlbionExtractor {
     }
 
     fn extract_chat_message(&self, parameters: &RawParameters) -> ExtractedPacket {
-        let channel_type = parameters
-            .get(0)
-            .and_then(value_i64)
+        let channel_type = value_i64(parameters, 0)
             .and_then(|channel_id| self.chat_state.channel_type(channel_id));
 
         ExtractedPacket::ChatMessage(ChatMessage::from_params_with_channel_type(
@@ -283,7 +296,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::{albion::WorldMap, packet::OperationPacketKind};
+    use crate::{albion::{WorldMap, building_state::BuildingAction}, packet::OperationPacketKind};
     use serde_json::json;
 
     fn test_extractor() -> AlbionExtractor {
@@ -295,6 +308,84 @@ mod tests {
         ]));
 
         AlbionExtractor::new(world_map, item_names)
+    }
+
+    fn repair_building_info_params(building_id: i32) -> RawParameters {
+        let mut params = RawParameters::empty();
+        params.insert(0, json!(building_id));
+        params
+    }
+
+    fn repair_start_params(building_id: i32) -> RawParameters {
+        let mut params = RawParameters::empty();
+        params.insert(0, json!(639161102772354603i64));
+        params.insert(1, json!(building_id));
+        params.insert(2, json!(2));
+        params.insert(4, json!(4_808_960));
+        params.insert(5, json!([117564, 117597]));
+        params
+    }
+
+    fn action_cancel_params(building_id: i32) -> RawParameters {
+        let mut params = RawParameters::empty();
+        params.insert(1, json!(639161102774000000i64));
+        params.insert(2, json!(building_id));
+        params
+    }
+
+    fn action_finished_params(building_id: i32) -> RawParameters {
+        let mut params = RawParameters::empty();
+        params.insert(1, json!(639161102775333746i64));
+        params.insert(2, json!(building_id));
+        params
+    }
+
+    fn start_repair(extractor: &mut AlbionExtractor, building_id: i32) -> Option<ExtractedPacket> {
+        extractor.extract_operation(
+            OperationPacketKind::Request,
+            OperationCode::ActionOnBuildingStart,
+            &repair_start_params(building_id),
+            None,
+        )
+    }
+
+    fn cancel_repair_operation(
+        extractor: &mut AlbionExtractor,
+        building_id: i32,
+    ) -> Option<ExtractedPacket> {
+        extractor.extract_operation(
+            OperationPacketKind::Request,
+            OperationCode::ActionOnBuildingCancel,
+            &action_cancel_params(building_id),
+            None,
+        )
+    }
+
+    fn observe_repair_building(
+        extractor: &mut AlbionExtractor,
+        building_id: i32,
+    ) -> Option<ExtractedPacket> {
+        extractor.extract_event(
+            EventCode::RepairBuildingInfo,
+            &repair_building_info_params(building_id),
+        )
+    }
+
+    fn cancel_repair_event(
+        extractor: &mut AlbionExtractor,
+        building_id: i32,
+    ) -> Option<ExtractedPacket> {
+        extractor.extract_event(
+            EventCode::ActionOnBuildingCancel,
+            &action_cancel_params(building_id),
+        )
+    }
+
+    fn finish_action(extractor: &mut AlbionExtractor, building_id: i32) -> Option<ExtractedPacket> {
+        extractor.extract_event(
+            EventCode::ActionOnBuildingFinished,
+            &action_finished_params(building_id),
+        )
     }
 
     #[test]
@@ -323,5 +414,121 @@ mod tests {
         assert_eq!(state.player_name(), "PlayerOne");
         assert_eq!(state.location().friendly_name(), "Bridgewatch");
         assert_eq!(state.location_id(), Some(2000));
+    }
+
+    #[test]
+    fn repair_completes_in_normal_order() {
+        let mut extractor = test_extractor();
+
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+        assert!(start_repair(&mut extractor, 16).is_none());
+
+        let extracted = finish_action(&mut extractor, 16).unwrap();
+
+        let ExtractedPacket::BuildingAction(action) = extracted else {
+            panic!("expected building action");
+        };
+
+        let BuildingAction::Repair(repair) = action else {
+            panic!("expected repair action");
+        };
+
+        assert_eq!(repair.building_id, 16);
+        assert_eq!(repair.started_at, 639161102772354603);
+        assert_eq!(repair.finished_at, 639161102775333746);
+        assert_eq!(repair.num_items, 2);
+        assert_eq!(repair.cost, 4_808_960);
+        assert_eq!(repair.item_ids, vec![117564, 117597]);
+    }
+
+    #[test]
+    fn repair_completes_when_building_info_arrives_after_start() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+
+        assert!(matches!(
+            finish_action(&mut extractor, 16),
+            Some(ExtractedPacket::BuildingAction(BuildingAction::Repair(_)))
+        ));
+    }
+
+    #[test]
+    fn operation_cancel_before_info_prevents_repair_completion() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+        assert!(cancel_repair_operation(&mut extractor, 16).is_none());
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+
+        assert!(finish_action(&mut extractor, 16).is_none());
+    }
+
+    #[test]
+    fn event_cancel_after_info_prevents_repair_completion() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+        assert!(cancel_repair_event(&mut extractor, 16).is_none());
+
+        assert!(finish_action(&mut extractor, 16).is_none());
+    }
+
+    #[test]
+    fn cancel_for_different_building_does_not_clear_repair() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+        assert!(cancel_repair_operation(&mut extractor, 17).is_none());
+
+        assert!(matches!(
+            finish_action(&mut extractor, 16),
+            Some(ExtractedPacket::BuildingAction(BuildingAction::Repair(_)))
+        ));
+    }
+
+    #[test]
+    fn start_and_finish_without_repair_building_info_emits_nothing() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+
+        assert!(finish_action(&mut extractor, 16).is_none());
+    }
+
+    #[test]
+    fn repair_building_info_and_finish_without_start_emits_nothing() {
+        let mut extractor = test_extractor();
+
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+
+        assert!(finish_action(&mut extractor, 16).is_none());
+    }
+
+    #[test]
+    fn finish_for_different_building_emits_nothing() {
+        let mut extractor = test_extractor();
+
+        assert!(start_repair(&mut extractor, 16).is_none());
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+
+        assert!(finish_action(&mut extractor, 17).is_none());
+    }
+
+    #[test]
+    fn duplicate_finish_does_not_emit_duplicate_repair() {
+        let mut extractor = test_extractor();
+
+        assert!(observe_repair_building(&mut extractor, 16).is_none());
+        assert!(start_repair(&mut extractor, 16).is_none());
+
+        assert!(matches!(
+            finish_action(&mut extractor, 16),
+            Some(ExtractedPacket::BuildingAction(BuildingAction::Repair(_)))
+        ));
+        assert!(finish_action(&mut extractor, 16).is_none());
     }
 }

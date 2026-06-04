@@ -1,7 +1,7 @@
 use crate::{
     albion::MailInfoType,
     packet::RawParameters,
-    util::{dotnet_ticks_to_unix_millis, value_i64},
+    util::{dotnet_ticks_to_unix_millis, i64_array},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -36,13 +36,6 @@ impl GetMailInfos {
                 .collect(),
         }
     }
-}
-
-fn i64_array(value: Option<&Value>) -> Vec<i64> {
-    value
-        .and_then(Value::as_array)
-        .map(|values| values.iter().filter_map(value_i64).collect())
-        .unwrap_or_default()
 }
 
 fn string_array(value: Option<&Value>) -> Vec<String> {

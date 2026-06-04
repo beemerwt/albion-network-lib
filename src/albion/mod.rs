@@ -11,6 +11,7 @@ mod market_state;
 mod player_state;
 mod types;
 mod world;
+mod building_state;
 
 pub mod payloads;
 
@@ -30,3 +31,4 @@ pub use types::{
     AuctionType, ChatChannel, Guid, MailInfoMetadata, MailInfoType, OperationType, TradeType,
 };
 pub use world::{AlbionLocation, WorldMap};
+pub use building_state::BuildingState;

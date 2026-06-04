@@ -1,6 +1,6 @@
 // src/capture/filter.rs
 
-use crate::capture::{Endpoint, UdpPacket, HostFilter};
+use crate::capture::{Endpoint, HostFilter, UdpPacket};
 
 #[derive(Clone, Debug)]
 pub struct CaptureFilter {

@@ -2,6 +2,7 @@ use crate::albion::payloads::{
     AuctionBuyOffer, AuctionSellSpecificItem, AuctionTrade, AuctionTradeResponse,
 };
 use crate::albion::{CachedOrder, OperationType, TradeType};
+use crate::packet::RawParameters;
 use chrono::Utc;
 use std::collections::HashMap;
 
@@ -38,30 +39,21 @@ impl MarketState {
         self.orders_by_id.get(&order_id).cloned()
     }
 
-    pub fn begin_buy_order_request(
-        &mut self,
-        order_id: Option<i64>,
-        amount: Option<i64>,
-    ) -> AuctionBuyOffer {
-        let cached_order = self.begin_instant_trade(order_id, amount);
-        AuctionBuyOffer {
-            amount,
-            cached_order,
-            order_id,
-        }
+    pub fn begin_buy_order_request(&mut self, parameters: &RawParameters) -> AuctionBuyOffer {
+        let mut buy_item = AuctionBuyOffer::from_params(parameters);
+        let cached_order = self.begin_instant_trade(buy_item.order_id, buy_item.amount);
+        buy_item.cached_order = cached_order;
+        buy_item
     }
 
     pub fn begin_sell_specific_item_request(
         &mut self,
-        order_id: Option<i64>,
-        amount: Option<i64>,
+        parameters: &RawParameters,
     ) -> AuctionSellSpecificItem {
-        let cached_order = self.begin_instant_trade(order_id, amount);
-        AuctionSellSpecificItem {
-            amount,
-            cached_order,
-            order_id,
-        }
+        let mut sell_item = AuctionSellSpecificItem::from_params(parameters);
+        let cached_order = self.begin_instant_trade(sell_item.order_id, sell_item.amount);
+        sell_item.cached_order = cached_order;
+        sell_item
     }
 
     fn begin_instant_trade(

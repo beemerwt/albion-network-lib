@@ -1,7 +1,7 @@
 // src/packet/metadata.rs
 use crate::capture::Endpoint;
-use std::fmt;
 use serde::Serialize;
+use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct PacketMetadata {

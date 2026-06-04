@@ -14,9 +14,7 @@ impl Endpoint {
     }
 
     pub fn from_str(ip_str: &str) -> Self {
-        let (ip, port) = ip_str
-            .split_once(':')
-            .expect("invalid endpoint format");
+        let (ip, port) = ip_str.split_once(':').expect("invalid endpoint format");
         Self {
             ip: ip.parse().expect("invalid IP address"),
             port: port.parse().expect("invalid port"),

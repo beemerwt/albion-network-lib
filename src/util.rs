@@ -1,10 +1,10 @@
-use crate::error::Result;
+use crate::{error::Result, packet::RawParameters};
 use serde_json::{Value, json};
 
 const DOTNET_EPOCH_TICKS: i64 = 621_355_968_000_000_000;
 const TICKS_PER_MILLISECOND: i64 = 10_000;
 
-pub fn value_i64(value: &Value) -> Option<i64> {
+fn json_value_to_i64(value: &Value) -> Option<i64> {
     match value {
         Value::Bool(value) => Some(i64::from(*value)),
         Value::Number(number) => number
@@ -13,6 +13,43 @@ pub fn value_i64(value: &Value) -> Option<i64> {
         Value::String(text) => text.parse().ok(),
         _ => None,
     }
+}
+
+pub fn value_i32(params: &RawParameters, key: u8) -> Option<i32> {
+    params
+        .get(key)
+        .and_then(json_value_to_i64)
+        .and_then(|value| i32::try_from(value).ok())
+}
+
+pub fn value_i64(params: &RawParameters, key: u8) -> Option<i64> {
+    params.get(key).and_then(json_value_to_i64)
+}
+
+pub fn value_u8(params: &RawParameters, key: u8) -> Option<u8> {
+    params
+        .get(key)
+        .and_then(json_value_to_i64)
+        .and_then(|value| u8::try_from(value).ok())
+}
+
+pub fn i64_array(value: Option<&Value>) -> Vec<i64> {
+    value
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(json_value_to_i64).collect())
+        .unwrap_or_default()
+}
+
+pub fn value_i32_array(value: &Value) -> Option<Vec<i32>> {
+    let Value::Array(values) = value else {
+        return None;
+    };
+
+    values
+        .iter()
+        .map(json_value_to_i64)
+        .map(|value| value.and_then(|value| i32::try_from(value).ok()))
+        .collect()
 }
 
 pub fn to_signed_short(value: i64) -> i32 {

@@ -1,4 +1,8 @@
+mod action_on_building_cancel;
+mod action_on_building_finished;
+mod action_on_building_start;
 mod auction_buy_offer;
+mod auction_create_order;
 mod auction_get_offers;
 mod auction_get_requests;
 mod auction_sell_specific_item;
@@ -10,8 +14,13 @@ mod joined_chat_channel;
 mod left_chat_channel;
 mod marketplace_notification;
 mod read_mail;
+mod repair_building_info;
 
+pub use action_on_building_cancel::ActionOnBuildingCancel;
+pub use action_on_building_finished::ActionOnBuildingFinished;
+pub use action_on_building_start::ActionOnBuildingStart;
 pub use auction_buy_offer::AuctionBuyOffer;
+pub use auction_create_order::AuctionCreateOrder;
 pub use auction_get_offers::{AuctionGetOffers, AuctionGetOffersResult};
 pub use auction_get_requests::{AuctionGetRequests, AuctionGetRequestsResult};
 pub use auction_sell_specific_item::AuctionSellSpecificItem;
@@ -23,3 +32,4 @@ pub use joined_chat_channel::JoinedChatChannel;
 pub use left_chat_channel::LeftChatChannel;
 pub use marketplace_notification::MarketPlaceNotification;
 pub use read_mail::ReadMail;
+pub use repair_building_info::RepairBuildingInfo;

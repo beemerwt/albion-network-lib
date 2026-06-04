@@ -1,7 +1,7 @@
 use crate::{
-    packet::{ DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown },
     albion::{AlbionExtractor, EventCode, parse_event_code, parse_operation_code},
     error::Result,
+    packet::{DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown},
     packet::{OperationPacketKind, PacketMetadata, RawParameters},
 };
 use serde_json::json;

@@ -1,7 +1,7 @@
 use crate::{
-    packet::DecodedPacket,
     Endpoint,
     error::Result,
+    packet::DecodedPacket,
     packet::{OperationPacketKind, PacketMetadata},
     photon::{
         PhotonParserConfig,

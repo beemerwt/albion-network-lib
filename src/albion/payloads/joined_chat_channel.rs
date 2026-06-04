@@ -1,4 +1,4 @@
-use crate::{packet::RawParameters, util::value_i64};
+use crate::{packet::RawParameters, util::{value_i64, value_u8}};
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -10,12 +10,8 @@ pub struct JoinedChatChannel {
 impl JoinedChatChannel {
     pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            chat_index: parameters
-                .get(0)
-                .and_then(value_i64)
-                .and_then(|value| u8::try_from(value).ok())
-                .unwrap_or_default(),
-            channel_id: parameters.get(1).and_then(value_i64).unwrap_or_default(),
+            chat_index: value_u8(parameters, 0).unwrap_or_default(),
+            channel_id: value_i64(parameters, 1).unwrap_or_default(),
         }
     }
 }

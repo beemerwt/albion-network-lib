@@ -11,7 +11,7 @@ pub struct CodeParseError {
 pub fn parse_operation_code(
     params: &RawParameters,
 ) -> std::result::Result<OperationCode, CodeParseError> {
-    let Some(value) = params.get(253).and_then(value_i64) else {
+    let Some(value) = value_i64(params, 253) else {
         return Err(CodeParseError {
             raw_code: None,
             reason: "missing_operation_code",
@@ -28,7 +28,7 @@ pub fn parse_operation_code(
 }
 
 pub fn parse_event_code(params: &RawParameters) -> std::result::Result<EventCode, CodeParseError> {
-    let Some(value) = params.get(252).and_then(value_i64) else {
+    let Some(value) = value_i64(params, 252) else {
         return Err(CodeParseError {
             raw_code: None,
             reason: "missing_event_code",

@@ -31,7 +31,8 @@ impl PhotonParserConfig {
             debug,
             capture_unknown_packets: debug,
             world_map: WorldMap::from_embedded().unwrap_or_else(|_| WorldMap::empty()),
-            item_names: ItemNameResolver::download_default().unwrap_or_else(|_| ItemNameResolver::empty()),
+            item_names: ItemNameResolver::download_default()
+                .unwrap_or_else(|_| ItemNameResolver::empty()),
         }
     }
 }

@@ -3,7 +3,7 @@ mod kind;
 mod metadata;
 mod parameters;
 
-pub use metadata::{ PacketMetadata, PacketDirection };
 pub use decoded::{DecodedEvent, DecodedOperation, DecodedPacket, DecodedUnknown};
-pub use parameters::{RawParameters, SerializableParameters};
 pub use kind::OperationPacketKind;
+pub use metadata::{PacketDirection, PacketMetadata};
+pub use parameters::{RawParameters, SerializableParameters};
