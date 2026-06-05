@@ -10,7 +10,7 @@ pub struct RepairBuildingInfo {
 impl RepairBuildingInfo {
     pub fn from_params(parameters: &RawParameters) -> Option<Self> {
         Some(Self {
-            building_id: value_i64(parameters, 0)?
+            building_id: value_i64(parameters, 0)?,
         })
     }
 }

@@ -1,4 +1,4 @@
-use crate::{ packet::RawParameters, util::value_i64 };
+use crate::{packet::RawParameters, util::value_i64};
 use serde::Serialize;
 
 // Operation code 56, event code 65

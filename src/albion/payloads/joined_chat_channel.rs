@@ -1,4 +1,7 @@
-use crate::{packet::RawParameters, util::{value_i64, value_u8}};
+use crate::{
+    packet::RawParameters,
+    util::{value_i64, value_u8},
+};
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

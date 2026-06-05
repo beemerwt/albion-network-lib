@@ -1,9 +1,9 @@
 use crate::albion::{
-    AlbionMail, building_state::BuildingAction, payloads::{
-        AuctionBuyOffer, AuctionGetOffers, AuctionGetOffersResult, AuctionGetRequests,
-        AuctionGetRequestsResult, AuctionSellSpecificItem, AuctionTradeResponse, ChatMessage,
-        GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel, MarketPlaceNotification,
-    }
+    AlbionMail, AuctionEvent,
+    building_state::BuildingAction,
+    payloads::{
+        ChatMessage, GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel, MarketPlaceNotification,
+    },
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -11,13 +11,8 @@ use serde_json::Value;
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ExtractedPacket {
-    AuctionGetOffersRequest(AuctionGetOffers),
-    AuctionGetRequestsRequest(AuctionGetRequests),
-    AuctionGetOffersResponse(AuctionGetOffersResult),
-    AuctionGetRequestsResponse(AuctionGetRequestsResult),
-    AuctionBuyOfferRequest(AuctionBuyOffer),
-    AuctionSellSpecificItemRequest(AuctionSellSpecificItem),
-    AuctionTradeResponse(AuctionTradeResponse),
+    Auction(AuctionEvent),
+
     JoinResponse(JoinResponse),
     MarketPlaceNotification(MarketPlaceNotification),
     ChatMessage(ChatMessage),

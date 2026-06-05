@@ -24,8 +24,7 @@ impl JoinResponse {
             player_name: params.get(2).and_then(Value::as_str).map(str::to_string),
             user_object_id: value_i32(params, 0),
             user_guid: params.get(1).and_then(Guid::from_value),
-            global_multiplier: value_i64(params, 84)
-                .map(|value| value as f64 / 10000.0),
+            global_multiplier: value_i64(params, 84).map(|value| value as f64 / 10000.0),
         }
     }
 }

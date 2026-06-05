@@ -182,7 +182,7 @@ impl MailInfoType {
         }
     }
 
-    pub fn from_str(value: &str) -> Self {
+    pub fn from_str(value: String) -> Self {
         match value {
             value if value.eq_ignore_ascii_case("MARKETPLACE_SELLORDER_FINISHED_SUMMARY") => {
                 Self::MarketPlaceSellOrderFinishedSummary
@@ -412,26 +412,29 @@ mod tests {
     #[test]
     fn mail_info_type_maps_source_strings_and_defaults_unknowns() {
         assert_eq!(
-            MailInfoType::from_str("MARKETPLACE_SELLORDER_FINISHED_SUMMARY"),
+            MailInfoType::from_str("MARKETPLACE_SELLORDER_FINISHED_SUMMARY".to_string()),
             MailInfoType::MarketPlaceSellOrderFinishedSummary
         );
         assert_eq!(
-            MailInfoType::from_str("marketplace_buyorder_finished_summary"),
+            MailInfoType::from_str("marketplace_buyorder_finished_summary".to_string()),
             MailInfoType::MarketPlaceBuyOrderFinishedSummary
         );
         assert_eq!(
-            MailInfoType::from_str("MARKETPLACE_BUYORDER_EXPIRED_SUMMARY"),
+            MailInfoType::from_str("MARKETPLACE_BUYORDER_EXPIRED_SUMMARY".to_string()),
             MailInfoType::MarketPlaceBuyOrderExpiredSummary
         );
         assert_eq!(
-            MailInfoType::from_str("MARKETPLACE_SELLORDER_EXPIRED_SUMMARY"),
+            MailInfoType::from_str("MARKETPLACE_SELLORDER_EXPIRED_SUMMARY".to_string()),
             MailInfoType::MarketPlaceSellOrderExpiredSummary
         );
         assert_eq!(
-            MailInfoType::from_str("BLACKMARKET_SELLORDER_EXPIRED_SUMMARY"),
+            MailInfoType::from_str("BLACKMARKET_SELLORDER_EXPIRED_SUMMARY".to_string()),
             MailInfoType::BlackMarketSellOrderExpiredSummary
         );
-        assert_eq!(MailInfoType::from_str("unexpected"), MailInfoType::Unknown);
+        assert_eq!(
+            MailInfoType::from_str("unexpected".to_string()),
+            MailInfoType::Unknown
+        );
     }
 
     #[test]

@@ -1,4 +1,6 @@
 // src/albion/mod.rs
+mod auction_event;
+mod building_state;
 mod cached_order;
 mod chat_state;
 mod codes;
@@ -11,7 +13,6 @@ mod market_state;
 mod player_state;
 mod types;
 mod world;
-mod building_state;
 
 pub mod payloads;
 
@@ -20,6 +21,8 @@ pub use extractor::AlbionExtractor;
 pub use items::ItemNameResolver;
 pub use player_state::PlayerState;
 
+pub use auction_event::AuctionEvent;
+pub use building_state::BuildingState;
 pub use codes::{
     event_codes::EventCode,
     operation_codes::OperationCode,
@@ -31,4 +34,3 @@ pub use types::{
     AuctionType, ChatChannel, Guid, MailInfoMetadata, MailInfoType, OperationType, TradeType,
 };
 pub use world::{AlbionLocation, WorldMap};
-pub use building_state::BuildingState;

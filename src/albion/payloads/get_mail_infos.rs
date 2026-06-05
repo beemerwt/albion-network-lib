@@ -1,10 +1,9 @@
 use crate::{
     albion::MailInfoType,
     packet::RawParameters,
-    util::{dotnet_ticks_to_unix_millis, i64_array},
+    util::{dotnet_ticks_to_unix_millis, i64_array, string_array},
 };
 use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct GetMailInfos {
@@ -17,38 +16,18 @@ pub struct GetMailInfos {
 impl GetMailInfos {
     pub fn from_params(parameters: &RawParameters) -> Self {
         Self {
-            mail_ids: i64_array(parameters.get(3)),
-            location_ids: string_array(parameters.get(7)),
-            types: parameters
-                .get(11)
-                .and_then(Value::as_array)
-                .map(|values| {
-                    values
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .map(MailInfoType::from_str)
-                        .collect()
-                })
-                .unwrap_or_default(),
-            received: i64_array(parameters.get(12))
+            mail_ids: i64_array(parameters, 3),
+            location_ids: string_array(parameters, 7),
+            types: string_array(parameters, 11)
+                .into_iter()
+                .map(MailInfoType::from_str)
+                .collect(),
+            received: i64_array(parameters, 12)
                 .into_iter()
                 .map(dotnet_ticks_to_unix_millis)
                 .collect(),
         }
     }
-}
-
-fn string_array(value: Option<&Value>) -> Vec<String> {
-    value
-        .and_then(Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

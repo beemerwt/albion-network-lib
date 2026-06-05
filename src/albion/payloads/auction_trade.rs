@@ -1,13 +1,15 @@
 use crate::albion::{CachedOrder, OperationType, TradeType};
 use serde::Serialize;
 
+// AuctionTrade is when you purchase or sell an item without an order
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AuctionTrade {
-    pub amount: Option<i64>,
-    pub silver_amount: Option<i64>,
+    pub order: CachedOrder,
+    pub amount: i64,
+    pub silver_amount: i64,
     pub operation: OperationType,
     pub trade_type: TradeType,
-    pub order: Option<CachedOrder>,
     pub timestamp: i64,
     pub id: i64,
 }

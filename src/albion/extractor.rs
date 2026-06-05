@@ -2,12 +2,19 @@ use std::sync::Arc;
 
 use crate::{
     albion::{
-        AlbionLocation, BuildingState, CachedOrder, EventCode, ExtractedPacket, ItemNameResolver, OperationCode, PlayerState, WorldMap, chat_state::ChatState, mail_state::MailState, market_state::MarketState, payloads::{
+        AlbionLocation, AuctionEvent, BuildingState, CachedOrder, EventCode, ExtractedPacket,
+        ItemNameResolver, OperationCode, PlayerState, WorldMap,
+        chat_state::ChatState,
+        mail_state::MailState,
+        market_state::MarketState,
+        payloads::{
             ActionOnBuildingCancel, ActionOnBuildingFinished, ActionOnBuildingStart,
-            AuctionGetOffers, AuctionGetOffersResult, AuctionGetRequests, AuctionGetRequestsResult,
-            ChatMessage, GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel,
+            AuctionCreateOrder, AuctionGetOffers,
+            AuctionGetOffersResult, AuctionGetRequests, AuctionGetRequestsResult, ChatMessage,
+            GetMailInfos, JoinResponse, JoinedChatChannel, LeftChatChannel,
             MarketPlaceNotification, ReadMail, RepairBuildingInfo,
-        }, player_state::PendingRepairAction
+        },
+        player_state::PendingRepairAction,
     },
     packet::{OperationPacketKind, RawParameters},
     util::value_i64,
@@ -75,64 +82,50 @@ impl AlbionExtractor {
         match (operation_code, packet_kind) {
             (OperationCode::ActionOnBuildingStart, OperationPacketKind::Request) => {
                 self.building_state.begin_action(parameters);
-                return None;
             }
             (OperationCode::ActionOnBuildingCancel, OperationPacketKind::Request) => {
                 self.building_state.cancel_action();
-                return None;
+            }
+            (OperationCode::AuctionBuyOffer, OperationPacketKind::Request) => {
+                self.market_state.begin_buy_order_request(parameters);
+            }
+            (OperationCode::AuctionSellSpecificItem, OperationPacketKind::Request) => {
+                self.market_state.begin_sell_specific_item_request(parameters);
             }
             (OperationCode::AuctionGetOffers, OperationPacketKind::Request) => {
-                let orders = self.extract_market_orders(parameters, fallback_location_index);
-                return Some(ExtractedPacket::AuctionGetOffersRequest(AuctionGetOffers {
-                    market_order_count: orders.len(),
-                    market_orders: orders,
-                }));
+                self.extract_market_orders(parameters, fallback_location_index);
             }
             (OperationCode::AuctionGetRequests, OperationPacketKind::Request) => {
-                let orders = self.extract_market_orders(parameters, fallback_location_index);
-                return Some(ExtractedPacket::AuctionGetRequestsRequest(
-                    AuctionGetRequests {
-                        market_order_count: orders.len(),
-                        market_orders: orders,
-                    },
-                ));
+                self.extract_market_orders(parameters, fallback_location_index);
             }
             (OperationCode::AuctionGetOffers, OperationPacketKind::Response) => {
                 let orders = self.extract_market_orders(parameters, fallback_location_index);
                 self.market_state.cache_orders_from_slice(&orders);
-                return Some(ExtractedPacket::AuctionGetOffersResponse(
+                return Some(ExtractedPacket::Auction(AuctionEvent::GetOffers(
                     AuctionGetOffersResult {
                         market_order_count: orders.len(),
                         market_orders: orders,
                     },
-                ));
+                )));
             }
             (OperationCode::AuctionGetRequests, OperationPacketKind::Response) => {
                 let orders = self.extract_market_orders(parameters, fallback_location_index);
                 self.market_state.cache_orders_from_slice(&orders);
-                return Some(ExtractedPacket::AuctionGetRequestsResponse(
+                return Some(ExtractedPacket::Auction(AuctionEvent::GetRequests(
                     AuctionGetRequestsResult {
                         market_order_count: orders.len(),
                         market_orders: orders,
                     },
-                ));
-            }
-            (OperationCode::AuctionBuyOffer, OperationPacketKind::Request) => {
-                let request = self.market_state.begin_buy_order_request(parameters);
-                return Some(ExtractedPacket::AuctionBuyOfferRequest(request));
-            }
-            (OperationCode::AuctionSellSpecificItem, OperationPacketKind::Request) => {
-                let request = self
-                    .market_state
-                    .begin_sell_specific_item_request(parameters);
-                return Some(ExtractedPacket::AuctionSellSpecificItemRequest(request));
+                )));
             }
             (
                 OperationCode::AuctionBuyOffer | OperationCode::AuctionSellSpecificItem,
                 OperationPacketKind::Response,
             ) => {
                 let response = self.market_state.finish_instant_trade_response(return_code);
-                return Some(ExtractedPacket::AuctionTradeResponse(response));
+                return response
+                    .confirmed_trade
+                    .map(|trade| ExtractedPacket::Auction(AuctionEvent::InstantTrade(trade)));
             }
             (OperationCode::Join, OperationPacketKind::Response) => {
                 return Some(self.handle_join_response(parameters));
@@ -142,6 +135,14 @@ impl AlbionExtractor {
             }
             (OperationCode::ReadMail, OperationPacketKind::Response) => {
                 return self.handle_read_mail_response(parameters);
+            }
+            (OperationCode::AuctionCreateOffer, OperationPacketKind::Request) => {
+                let request = AuctionCreateOrder::sell_order_from_params(parameters);
+                return Some(ExtractedPacket::Auction(AuctionEvent::CreateOrder(request)));
+            }
+            (OperationCode::AuctionCreateRequest, OperationPacketKind::Request) => {
+                let request = AuctionCreateOrder::buy_order_from_params(parameters);
+                return Some(ExtractedPacket::Auction(AuctionEvent::CreateOrder(request)));
             }
             _ => {}
         }
@@ -237,9 +238,10 @@ impl AlbionExtractor {
                 self.building_state.cancel_action();
                 None
             }
-            EventCode::ActionOnBuildingFinished => {
-                self.building_state.finish_action(parameters).map(ExtractedPacket::BuildingAction)
-            }
+            EventCode::ActionOnBuildingFinished => self
+                .building_state
+                .finish_action(parameters)
+                .map(ExtractedPacket::BuildingAction),
             EventCode::MarketPlaceNotification => {
                 Some(self.extract_marketplace_notification(parameters))
             }
@@ -296,7 +298,10 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::{albion::{WorldMap, building_state::BuildingAction}, packet::OperationPacketKind};
+    use crate::{
+        albion::{WorldMap, building_state::BuildingAction},
+        packet::OperationPacketKind,
+    };
     use serde_json::json;
 
     fn test_extractor() -> AlbionExtractor {

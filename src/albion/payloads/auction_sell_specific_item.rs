@@ -4,8 +4,10 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct AuctionSellSpecificItem {
     pub amount: Option<i64>,
-    pub cached_order: Option<CachedOrder>,
     pub order_id: Option<i64>,
+
+    pub cached_order: Option<CachedOrder>,
+    pub tax: Option<i64>, // not part of the packet, calculated as 4% or 8% of the price depending on if the player has premium or not
 }
 
 impl AuctionSellSpecificItem {
@@ -16,6 +18,7 @@ impl AuctionSellSpecificItem {
             amount,
             cached_order: None,
             order_id,
+            tax: None,
         }
     }
 }
